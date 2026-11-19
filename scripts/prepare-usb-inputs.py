@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 import runpy
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,7 @@ VOLUMES = (
     ("OS", "OS.raw", 6077580800, OS_HASH, "04769D26-2CA0-4825-B443-E2E5F88300F2"),
     ("SystemOS", "SystemOS.dmg", 3303014400, SYSTEM_HASH, "8846FE78-2910-4297-AF97-D59BB6F8FC16"),
 )
+TRUST_BUNDLE_HASH = "7416ca4f8377146626bb284e2133c76bee6cb4e3ee0af5d648b186235a7323a7"
 
 
 def sha256(path):
@@ -43,7 +45,7 @@ def prepare(args, stage):
     make_manifest = runpy.run_path(str(manifest_tool))["make"]
 
     sys.path.insert(0, str(args.unixnu / "scripts"))
-    from unixnu.ipsw import Ipsw
+    from unixnu.ipsw import Ipsw, im4p_payload
     from unixnu.udif import Image
 
     board = tomllib.loads(BOARD.read_text(encoding="utf-8"))
@@ -53,6 +55,12 @@ def prepare(args, stage):
     try:
         os_dmg = source.extract("OS")
         system_dmg = source.extract("Cryptex1,SystemOS")
+        static = im4p_payload(source.read("StaticTrustCache"))
+        system = im4p_payload(source.read("Cryptex1,SystemTrustCache"))
+        trust = struct.pack("<3I", 2, 12, 12 + len(static)) + static + system
+        if hashlib.sha256(trust).hexdigest() != TRUST_BUNDLE_HASH:
+            raise ValueError("Original 21H461 trust-cache bundle hash mismatch")
+        (stage / "original-static-system.bundle").write_bytes(trust)
     finally:
         source.zip.close()
         source.stream.close()
