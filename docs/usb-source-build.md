@@ -10,6 +10,40 @@
 
 原上游的 S1–S6 开机检查点属于不同的启动配置。这次的验收顺序是 USB 供盘开始、锁屏出现时间和底部横条、实际手指上滑进主屏幕、横滑和点按设置。等待期间在电脑端观察 USB 读取进度。
 
+## 从零开始的执行顺序
+
+将仓库首页交给 AI 后，让它按下面的顺序操作。目标机型是 OnePlus Pad 2 Pro OPD2413，供盘和内核对应 iPadOS 17.7.11（21H461）。
+
+| 顺序 | 操作 | 完成后应看到 |
+| --- | --- | --- |
+| 1 | [准备目录与工具](#准备目录与工具)，确认平板型号和电脑环境。 | 能进入仓库根目录，Windows 能运行 Android Platform-Tools。 |
+| 2 | [生成 USB 供盘材料](#生成-usb-供盘材料)。已有 IPSW 可以通过 `--ipsw` 传入。 | USB 目录有 `OS.raw`、`SystemOS.dmg`、两份 `*.manifest.bin`、本地公钥和原版信任缓存。 |
+| 3 | [生成 RAM Data 和来宾 ADT](#生成-ram-data-和来宾-adt)。RAM Data 在 macOS 生成，ADT 可在 Linux 或 WSL 生成。 | `$BUILD/ram-data/data.dbrdisk`、`seed.json` 和 `$BUILD/kernel.macho.adt`。 |
+| 4 | [提取 Android DTB](#提取-android-dtb)，再[编译板级 UEFI](#编译板级-uefi)。 | `$BUILD/erhai.dtb` 和 `$BUILD/firmware/recovery-high-ram.fd`。 |
+| 5 | [编译和链接 USB／触控内核组件](#编译和链接-usb触控内核组件)。 | 需要生成与第 2 步清单和第 3 步 Data UUID 配套的 `$BUILD/kernel.compat.macho`。只有 `source-kernel.macho` 时还需要继续预链接。 |
+| 6 | [生成 boot.img](#生成-bootimg)。 | `$BUILD/boot.img` 和打包脚本打印的 SHA-256。 |
+| 7 | [临时启动并运行 USB 供盘](#临时启动并运行-usb-供盘)。 | Windows 供盘脚本开始报告读取，平板进入锁屏。 |
+| 8 | 在平板内屏从底部上滑，再横滑和点开设置。 | 进入主屏幕，实际触控能操作界面。 |
+
+**首次从零构建的停点**在第 5 步。仓库的对象编译和链接入口需要已准备的 XNU 树及 `libErhaiUsbArmCpu.a`，最终预链接还待接入。缺少对应产物时，让 AI 列出文件名和卡住的命令。第 6 步需要最终预链接内核以及与它配套的两份清单和 RAM Data。
+
+## 准备目录与工具
+
+在 Linux 或 WSL 执行。以下目录以仓库旁边为例，已有目录可以改用自己的绝对路径。
+
+```sh
+git clone https://github.com/linux0922/UniXNU-erhai.git
+cd UniXNU-erhai
+export BUILD="$(realpath -m ../erhai-local-inputs/build)"
+export INPUTS="$(realpath -m ../erhai-local-inputs)"
+export CACHE="$INPUTS/cache"
+export USB_INPUTS="$INPUTS/usb"
+export UEFI="$(realpath -m ../uefi-sheng)"
+mkdir -p "$BUILD" "$INPUTS"
+```
+
+Linux 或 WSL 负责文件提取、UEFI 编译与打包。macOS 用于生成 APFS RAM Data。Windows 侧需要 Python、Apple USBMux 服务、Android Platform-Tools 和一根数据线。跨主机时使用同一轮构建的输入，至少将 RAM Data 的 `data.dbrdisk` 和 `seed.json` 交给打包主机。私钥放在本地输入目录。
+
 ## 生成 USB 供盘材料
 
 准备 Python 3.11+、Git、OpenSSL，以及 UniXNU 的 UDIF 解码依赖 LZFSE。使用 Linux 或 WSL，把缓存和输出放在同一文件系统上，SystemOS 通过硬链接从缓存复用。首次解包时还要留出 OS DMG 和约 6.08 GB 的解码输出空间。
@@ -65,6 +99,47 @@ python3 scripts/prepare-erhai-dtb.py \
 ```
 
 脚本校验发布文件的哈希，提取内嵌 DTB，并将超出本次实测机型内存范围的固定 ramoops 保留区替换为 FDT_NOP。输出与实测 USB 版用的 Android DTB 逐字节相同，SHA-256 为 `9201ea6c07983a8c9fc74d3414bf7fcea46aa200f32b20f942bb4fc64a99133c`。
+
+## 其余启动输入
+
+- 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
+- `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
+
+### UEFI 驱动输入
+
+实测版使用 [UniXNU/uefi-sheng](https://github.com/UniXNU/uefi-sheng/tree/66421cb7bb5694843aec8de1ca3d1de4c20cca38) 的 Pagani 驱动目录作模板，再替换其中 46 份 PE32 为 OPD2413 原厂模块。安装 `uefi_firmware==1.16`，并在已初始化子模块的 UEFI 检出中使用下列命令重建输入目录。
+
+```sh
+python3 scripts/prepare-erhai-uefi-drivers.py \
+  --stock-uefi /path/to/local/uefi_a.img \
+  --pagani-binaries "$UEFI/Binaries/pagani" \
+  --output "$UEFI/Binaries/erhai"
+```
+
+实测原厂 `uefi_a.img` 来自 OPD2413，SHA-256 为 `ca72c899177c54a6fa2876d65c9881ba1cbb4ef3dd3afcd584e33ec1194e2dac`。同机型公开记录指出原厂 `uefi` 分区位于一加官方固件包。此处还待确认与这个精确哈希对应的可下载包。提取工具和哈希清单已用本地样本验证，生成的 413 个文件全部与实测构建树一致。[原厂固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
+
+### 编译板级 UEFI
+
+在 Linux 或 WSL 使用专门的 UEFI 检出，固定到 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 并准备它的子模块。安装该检出的 `pip-requirements.txt` 和 Mu-Silicium Linux 构建依赖，包括 Clang/LLD、AArch64 GNU binutils、NASM、CMake、Ninja。UEFI 构建会使用其 EDK2 工具链和 Stuart 管理的外部依赖。
+
+```sh
+git clone https://github.com/UniXNU/DarwinBoot.git ../UniXNU-DarwinBoot
+git -C ../UniXNU-DarwinBoot checkout --detach 85332b317ee80898fc78939ea64e6ca52d3837a3
+```
+
+脚本从这个提交提取 DarwinBoot 源码，从前文的 UniXNU `c1ecc5b7…` 提取 UEFI package 源码，在新构建目录应用补丁。
+
+`IOMEM` 指向从目标平板 Linux 以 root 读取的 `/proc/iomem` 文本。脚本检查实测固件使用的 4 GiB 高地址区间完全处于同一段未保留的 System RAM，输入 DTB 也必须匹配公开提取脚本的输出。
+
+```sh
+python3 scripts/build-erhai-uefi.py \
+  --uefi "$UEFI" --unixnu ../UniXNU --darwinboot ../UniXNU-DarwinBoot \
+  --dtb "$BUILD/erhai.dtb" --iomem "$IOMEM" --work "$BUILD/firmware"
+```
+
+用 `"$BUILD/firmware/recovery-high-ram.fd"` 作为打包时的 `--fd`。打包使用同一个 `"$UEFI"`，其中的 BootShim 负责将嵌入的 payload 交给 UEFI。可以先加 `--stage-only` 检查补丁，然后使用一个新工作目录运行完整编译。
+
+已在独立 Linux 检出中用准备好的厂商驱动和 Stuart 工具缓存完成 DEBUG 编译，输出为 2,785,280 字节，构建工具校验了 53 个固件组件。本次输出 SHA-256 为 `033ca0f1516818d31aea6375ce9f99be363783fbdc96ff3d6ced218f42d64128`，新编固件尚待实机启动验证。
 
 ## 编译和链接 USB／触控内核组件
 
@@ -122,11 +197,12 @@ python3 scripts/package-usb-boot.py \
 
 ## 临时启动并运行 USB 供盘
 
-确认 Fastboot 连接的是自己的 OPD2413。需要重启时先征得机主同意。以下是临时启动命令。
+确认 Fastboot 连接的是自己的 OPD2413。需要重启时先征得机主同意。在 Windows PowerShell 中执行临时启动命令。先把镜像路径替换成 Windows 可访问的完整路径。
 
-```sh
+```powershell
+$bootImage = 'C:\\path\\to\\boot.img'
 fastboot devices
-fastboot boot "$BUILD/boot.img"
+fastboot boot $bootImage
 ```
 
 等 Windows 的 Apple USBMux 服务识别来宾后，用生成该内核时对应的四份供盘文件运行脚本。路径可以指向 Windows 可访问的 WSL 输出目录。启动和使用过程中保持 USB 与脚本在线。
@@ -136,44 +212,3 @@ python scripts/serve-usb-blocks.py --images-dir '<Windows 可访问的 USB 材�
 ```
 
 看到锁屏时间和底部横条后，用内屏从底部上滑。进入主屏幕后横滑一页并点开设置。
-
-## 其余启动输入
-
-- 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
-- `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
-
-### UEFI 驱动输入
-
-实测版使用 [UniXNU/uefi-sheng](https://github.com/UniXNU/uefi-sheng/tree/66421cb7bb5694843aec8de1ca3d1de4c20cca38) 的 Pagani 驱动目录作模板，再替换其中 46 份 PE32 为 OPD2413 原厂模块。安装 `uefi_firmware==1.16`，并在已初始化子模块的 UEFI 检出中使用下列命令重建输入目录。
-
-```sh
-python3 scripts/prepare-erhai-uefi-drivers.py \
-  --stock-uefi /path/to/local/uefi_a.img \
-  --pagani-binaries "$UEFI/Binaries/pagani" \
-  --output "$UEFI/Binaries/erhai"
-```
-
-实测原厂 `uefi_a.img` 来自 OPD2413，SHA-256 为 `ca72c899177c54a6fa2876d65c9881ba1cbb4ef3dd3afcd584e33ec1194e2dac`。同机型公开记录指出原厂 `uefi` 分区位于一加官方固件包。此处还待确认与这个精确哈希对应的可下载包。提取工具和哈希清单已用本地样本验证，生成的 413 个文件全部与实测构建树一致。[原厂固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
-
-### 编译板级 UEFI
-
-在 Linux 或 WSL 使用专门的 UEFI 检出，固定到 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 并准备它的子模块。安装该检出的 `pip-requirements.txt` 和 Mu-Silicium Linux 构建依赖，包括 Clang/LLD、AArch64 GNU binutils、NASM、CMake、Ninja。UEFI 构建会使用其 EDK2 工具链和 Stuart 管理的外部依赖。
-
-```sh
-git clone https://github.com/UniXNU/DarwinBoot.git ../UniXNU-DarwinBoot
-git -C ../UniXNU-DarwinBoot checkout --detach 85332b317ee80898fc78939ea64e6ca52d3837a3
-```
-
-脚本从这个提交提取 DarwinBoot 源码，从前文的 UniXNU `c1ecc5b7…` 提取 UEFI package 源码，在新构建目录应用补丁。
-
-`IOMEM` 指向从目标平板 Linux 以 root 读取的 `/proc/iomem` 文本。脚本检查实测固件使用的 4 GiB 高地址区间完全处于同一段未保留的 System RAM，输入 DTB 也必须匹配公开提取脚本的输出。
-
-```sh
-python3 scripts/build-erhai-uefi.py \
-  --uefi "$UEFI" --unixnu ../UniXNU --darwinboot ../UniXNU-DarwinBoot \
-  --dtb "$BUILD/erhai.dtb" --iomem "$IOMEM" --work "$BUILD/firmware"
-```
-
-用 `"$BUILD/firmware/recovery-high-ram.fd"` 作为打包时的 `--fd`。打包使用同一个 `"$UEFI"`，其中的 BootShim 负责将嵌入的 payload 交给 UEFI。可以先加 `--stage-only` 检查补丁，然后使用一个新工作目录运行完整编译。
-
-已在独立 Linux 检出中用准备好的厂商驱动和 Stuart 工具缓存完成 DEBUG 编译，输出为 2,785,280 字节，构建工具校验了 53 个固件组件。本次输出 SHA-256 为 `033ca0f1516818d31aea6375ce9f99be363783fbdc96ff3d6ced218f42d64128`，新编固件尚待实机启动验证。
