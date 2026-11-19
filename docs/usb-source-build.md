@@ -90,28 +90,52 @@ python3 scripts/link-usb-source-kernel.py \
 
 对象构建会验证两个根卷清单的签名和块表，并把本机取得的 NT36536 固件嵌入触控对象。链接入口使用指定的配套 archive，检查目标内核走 USB 根卷等待路径。配套 archive 里的 USB 控制器、Native HID、CPU 和原版存储 ABI 绑定，以及把 `source-kernel.macho` 变成最终预链接内核的步骤，还待接入公开构建。当前从零复现会在这些阶段之前停下。
 
-## 打包本地构建产物
+## 生成 boot.img
 
-已有对应构建产物时，可在 Linux 或 WSL 上安装 `dosfstools` 和 `mtools` 后运行。输入文件名可以自选，下例用 `BUILD` 指向本地构建目录。
+在仓库根目录用 Linux 或 WSL 运行。打包需要 Python 3.11+、`dosfstools`、`mtools`，以及板级 UEFI 构建中的 Clang、`llvm-objcopy` 和 `dtc`。下例用 `BUILD` 指向自己的构建目录，`UEFI` 指向编译固件时使用的同一个检出，`USB_INPUTS` 指向本轮生成的 USB 供盘目录。
+
+| 打包输入 | 从哪里取得 |
+| --- | --- |
+| `$BUILD/firmware/recovery-high-ram.fd` | 用本页「编译板级 UEFI」步骤生成。 |
+| `$BUILD/erhai.dtb` | 用「提取 Android DTB」步骤生成。 |
+| `$BUILD/kernel.macho.adt` | 用「生成 RAM Data 和来宾 ADT」步骤生成。 |
+| `$USB_INPUTS/original-static-system.bundle` | 从原始 21H461 IPSW 提取，由 `prepare-usb-inputs.py` 生成。 |
+| `$BUILD/ram-data/data.dbrdisk` | 由 `prepare-ram-data.py` 和 UniXNU 打包器生成。内核配置要使用同次生成的 Data UUID。 |
+| `$BUILD/kernel.compat.macho` | **最终预链接内核**，已包含 USB、触控及同轮供盘清单的索引。目前公开的链接脚本输出到 `source-kernel.macho`，配套 archive 与最终预链接仍待接入。 |
+| `configs/erhai-usb-desktop.toml` | 仓库提供的 OPD2413 USB 桌面启动配置。 |
+
+拿到以上输入后执行。缺少最终预链接内核时，先补齐该阶段。
 
 ```sh
 python3 scripts/package-usb-boot.py \
-  --builder ./unixnu --uefi "$UEFI" --fd "$BUILD/recovery-high-ram.fd" \
+  --builder ./unixnu \
+  --uefi "$UEFI" --fd "$BUILD/firmware/recovery-high-ram.fd" \
   --dtb "$BUILD/erhai.dtb" --kernel "$BUILD/kernel.compat.macho" \
-  --adt "$BUILD/kernel.macho.adt" --trust ../erhai-local-inputs/usb/original-static-system.bundle \
-  --data "$BUILD/ram-data/data.dbrdisk" --config "$BUILD/unixnu.toml" \
-  --output "$BUILD/boot-usb-touch.img"
+  --adt "$BUILD/kernel.macho.adt" \
+  --trust "$USB_INPUTS/original-static-system.bundle" \
+  --data "$BUILD/ram-data/data.dbrdisk" \
+  --config configs/erhai-usb-desktop.toml \
+  --output "$BUILD/boot.img"
 ```
 
-这里的 `kernel.compat.macho` 是已完成 USB、触控和两份本地清单集成的预链接内核。ADT 需要匹配本轮的 USB 系统卷和易失 Data 配置。TOML 默认项需使用 USB 根卷，并指定 RAM Data。脚本会校验原版信任缓存、压缩内核、逐文件读回 FAT 内容，并检查最终 Android v4 头和内嵌 payload。
+脚本会生成 `$BUILD/boot.img`，并打印 SHA-256。BootShim 和 payload 都封进 Android v4 启动镜像。
 
-## 运行 USB 供盘
+## 临时启动并运行 USB 供盘
 
-用 Fastboot 临时启动使用配套信任锚的 USB 镜像。等 Windows 的 Apple USBMux 服务识别来宾后，在 Windows 上运行下面的命令，保持 USB 和脚本在线。路径可以指向 WSL 中的输出，无需再复制一份。
+确认 Fastboot 连接的是自己的 OPD2413。需要重启时先征得机主同意。以下是临时启动命令。
+
+```sh
+fastboot devices
+fastboot boot "$BUILD/boot.img"
+```
+
+等 Windows 的 Apple USBMux 服务识别来宾后，用生成该内核时对应的四份供盘文件运行脚本。路径可以指向 Windows 可访问的 WSL 输出目录。启动和使用过程中保持 USB 与脚本在线。
 
 ```powershell
 python scripts/serve-usb-blocks.py --images-dir '<Windows 可访问的 USB 材料目录>'
 ```
+
+看到锁屏时间和底部横条后，用内屏从底部上滑。进入主屏幕后横滑一页并点开设置。
 
 ## 其余启动输入
 
