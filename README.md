@@ -57,6 +57,8 @@ images/
 
 ## 从源码构建
 
+第一次操作请从[从零开始的执行顺序](docs/usb-source-build.md#从零开始的执行顺序)读起。清单逐步列出需要的输入、生成的文件和首次构建的停点。
+
 [生成 boot.img 并临时启动](docs/usb-source-build.md#生成-bootimg)列出了打包输入、完整命令和 USB 供盘顺序。
 
 把本页发给 AI 时，请让它先读 [AGENTS.md](AGENTS.md)，并以「内屏从锁屏上滑进入主屏幕，横滑和点按有效」作为实机验收。
