@@ -1,114 +1,81 @@
-# UniXNU-erhai
+# UniXNU-erhai · OnePlus Pad 2 Pro
 
-OnePlus Pad 2 Pro (erhai / OPD2413, SM8750P) 的 UniXNU 设备仓库。
+面向一加平板 2 Pro（OPD2413，代号 erhai，SM8750 平台）的 iPadOS / XNU 移植项目。本 fork 继续完善全程 USB 供盘、原生触控和板级驱动，欢迎同型号设备的使用者和开发者一起复现问题、提交日志和修复。
 
-结构派生自 [IssacL04/UniXNU-Sun_SM8750](https://github.com/IssacL04/UniXNU-Sun_SM8750)
-（一加 13T，同 SM8750 / Sun 平台），目标是把 XNU 送进入口（绿色条 + S1..S6）。
+当前本地实验版已经通过 Fastboot 临时启动 iPadOS 17.7.11（21H461），到达锁屏，并通过触控上滑进入主屏幕。主屏幕横滑和点击也已实测有效。
 
-## 本机实测值
+**实验版源码和构建输入正在整理。当前分支仍以设备基线为主，完整 USB 与自动触控改动尚待上传。** 下文的实测进展对应维护者本地实验版，复现步骤会随源码一起补齐。
 
-| 项 | 值 | 来源 |
-| --- | --- | --- |
-| FD base / size | `0xA7000000` / `0x2A8000` | 原厂 `uefi_a` 的 ELF `PT_LOAD` |
-| splash_region | `0xFC800000` + `0x2B00000` | 真机 DT `/reserved-memory/splash_region` |
-| GIC | `0x16000000` / `GICR 0x16080000` | 真机 DT `/soc/interrupt-controller@16000000` |
-| GICR stride | `0x40000` | SM8750 标准值（真机 DT 未声明） |
-| timebase | 19.2 MHz | `CNTFRQ_EL0` |
-| 面板 | 3392×2400 `XN242_P_D_A0024_vid` | `/proc/cmdline` |
-| 触控 | Novatek `nf_nt36536` | `/proc/cmdline` |
-| UFS | `0x1d84000` | `/proc/iomem`（本 profile 未启用） |
-| boot 分区 | 96 MiB，Android 头 v4 | `fastboot getvar all` |
+## 实测进展
 
-## ★ 关键：`embed_payload`
+2026 年 11 月 19 日，在 OPD2413 上完成以下验证。
 
-```toml
-[bootimg]
-embed_payload = true
-```
-
-**一加的 ABL 在 `fastboot boot` 时仍会从 `init_boot` 取通用 ramdisk**，把传入的
-ramdisk 字段整个替换掉。默认行为把 payload 放在 ramdisk 字段，因此会被换走，
-UniXNU 找不到 `unixnu.toml`。
-
-`embed_payload = true` 改成：payload 追加在 UEFI 固件之后一起 gzip 进 **kernel 字段**，
-Android ramdisk 字段留空，由 BootShim → SEC → payload HOB → `BootPayloadDxe`
-发布成只读 Block I/O，FAT 驱动再从中读配置。
-
-## 目录
-
-```
-board.toml                    板级描述
-configs/erhai_defconfig       源码内核配置（无 UFS/AES/GPU）
-patches/unixnu-source-kernel.patch   上游适配补丁（含 embed_payload）
-scripts/make-erhai-adt.py     Apple 设备树生成器（cpu0 + GICv3）
-scripts/test-adt.py           ADT 契约测试
-scripts/test-upstream.py      入口脚本 + 板级配置测试
-scripts/check-memory-map.py   UEFI 内存表 vs 真机 DT 交叉校验
-drivers/BootProgress/         S1..S6 屏幕检查点 + panic 页
-.github/workflows/xnu.yml     macOS Actions 内核构建
-upstream.rev                  锁定的上游提交
-unixnu                        入口脚本（准备补丁树后转发）
-```
-
-## 本地使用（Windows / Linux，做 UEFI 与打包）
-
-```sh
-# 首次会克隆 upstream 并应用补丁，产物在 .cache/upstream-<rev>-<hash>
-python unixnu --prepare
-
-python unixnu defconfig erhai_defconfig
-python unixnu bootimg --dtb <真机 DTB> --ramdisk <payload.img> -o boot.img
-```
-
-`unixnu` 会自动找 `../UEFI-erhai`；本机没有时退回
-`E:\one plus\tools\Mu-Silicium`（erhaiPkg 所在检出）。
-
-## 编内核（必须 macOS）
-
-推到 GitHub 后：
-
-```
-Actions → erhai XNU (OnePlus Pad 2 Pro) → Run workflow → main
-```
-
-产物 `erhai-xnu-<run>` 内含 `kernel/kernel.macho`、`payload/payload.img`、
-`payload/payload.json`、`logs/`、`unixnu.lock`。
-
-## 真机测试
-
-```bat
-adb reboot bootloader
-fastboot boot boot.img
-```
-
-**只用 `fastboot boot`，不要 `flash`。**
-
-预期屏幕顺序：
-
-```
-绿色条                UEFI 已退出，DarwinEnter 跳板执行
-S1: XNU entry, MMU off
-S2: bootstrap maps ready
-S3: MMU enabled
-S4: arm_init entered
-S5: PE_init_platform ready
-S6: kernel VM and exception vectors ready
-```
-
-判定：
-
-| 现象 | 含义 |
+| 功能 | 结果 |
 | --- | --- |
-| USB 消失、不回 Android | 代码在 EL1 跑（正常） |
-| 约 26 秒回 Android | 固件崩了被 fallback |
-| 看门狗约 11 分钟后复位 | 死循环兜底，等它自己回来即可 |
-| 屏幕停在某个 S 标记 | 卡在那一步 |
+| Fastboot 临时启动 | 成功进入 iPadOS 锁屏和主屏幕 |
+| 内屏显示 | 能显示启动图、锁屏及主屏幕 |
+| 全程 USB 供盘 | OS、SystemOS 和两份校验清单均由电脑提供，进入主屏幕后仍持续读盘 |
+| 自动触控 | 启动后自动加载 NT36536 固件到易失 SRAM，并在后台采集触控 |
+| 锁屏上滑 | 能进入主屏幕 |
+| 主屏幕交互 | 横滑或点击有效 |
 
-## 硬复位
+全程 USB 版测试中，电脑累计传输了约 4,828 MiB，设备端未记录到块读取错误。后台记录到 243 次 HID 触控事件分发，报告错误为 0。这是一次实机测试的结果，长时间使用和更多设备上的稳定性仍需验证。
 
-**电源键 + 音量上 长按 15 秒**。
+## USB 启动方式
 
-## 上游同步
+电脑保存 OS、SystemOS 及对应的校验清单，供盘程序通过 USB 响应平板的读取请求。平板通过 `fastboot boot` 临时加载启动镜像，运行期间保持电脑供盘。
 
-`upstream.rev` 固定构建所用的上游提交。升级时先改这个文件、检查补丁与测试，
-确认兼容再提交，避免直接改变可用基线。
+这一方式让同型号设备可以使用各自电脑上的文件目录。已实测的供盘脚本接受 `--images-dir`，目录中使用以下文件名。
+
+```text
+images/
+  OS.raw
+  SystemOS.dmg
+  OS.manifest.bin
+  SystemOS.manifest.bin
+```
+
+这些文件必须与启动镜像的版本和校验信息匹配。文件获取、转换、校验清单准备以及启动命令的完整流程，会在对应工具上传后补充。
+
+测试期间请保持 USB 数据线和供盘程序运行。当前发布方向采用 Fastboot 临时启动，保留 Android / Ubuntu 双系统使用场景。
+
+## 触控实现
+
+触控控制器为 Novatek NT36536，使用匹配的 XN242 固件。当前实现通过 QUP SPI 与 GPI DMA 读取芯片报告，再转换为 iPadOS 原生 HID 事件。
+
+实测中，直接轮询 GPIO 电平只能捕获少量报告。启用 GPIO162 下降沿锁存后，成功采集到底边触点、连续移动及抬手，并完成锁屏解锁。自动触控版沿用这条路径，在显示和 HID 服务就绪后启动后台采集。
+
+## 后续工作
+
+- 提交完整 USB 供盘、自动触控源码及可复现的构建流程。
+- 验证持续触控、更多手指操作，以及休眠和唤醒后的恢复。
+- 完善电源键、音量键等按键映射。短按电源键锁屏尚未实现。
+- 分析启动阶段的大量小读，缩短等待时间。
+- 逐项验证 CPU 多核心、GPU 加速、音频、网络、充电和电量显示。
+
+功能状态以实测记录为准。其他机型或其他固件版本的结果，需要单独复现。
+
+## 一起参与
+
+开发分支为 `erhai-usb-touch`，修复请以这个分支为目标提交 Pull Request。为方便其他人复现，建议每个 PR 聚焦一个问题，并写明测试机型、系统版本、修改效果和未验证部分。
+
+提交 Issue 时，请包含以下信息。
+
+- 平板型号、实验镜像名称或源码提交。
+- 电脑操作系统、USB 连接方式、所用 iPadOS 版本。
+- 复现步骤及最后正常的阶段，例如启动图、锁屏或主屏幕。
+- 相关日志片段，以及问题是否每次出现。
+
+分享日志前请移除设备序列号、个人目录和其他个人信息。对启动和输入问题，带时间顺序的日志有助于把供盘、驱动和界面行为对应起来。
+
+[反馈问题](https://github.com/linux0922/UniXNU-erhai/issues) · [提交修复](https://github.com/linux0922/UniXNU-erhai/pulls)
+
+## 项目来源
+
+本 fork 基于 OPD2413 设备仓库继续开发，实验版使用的设备基线为 `c18858bb442308cd6ed5dcf8539fb82e8ecb8fb1`。感谢 UniXNU 及各设备移植项目提供的代码、工具和调试经验。各组件沿用其原有许可，具体以对应文件和上游仓库为准。
+
+- [UniXNU 核心项目](https://github.com/UniXNU/UniXNU)
+- [OPD2413 设备适配上游](https://github.com/xuqian-git/UniXNU-erhai)
+- [设备仓库源项目](https://github.com/wally001012-cyber/UniXNU-erhai)
+- [SM8750 / 一加 13T 适配参考](https://github.com/IssacL04/UniXNU-Sun_SM8750)
+- [同型号 Linux 与触控驱动参考](https://github.com/yzddmr6/linux-sm8750-erhai)
