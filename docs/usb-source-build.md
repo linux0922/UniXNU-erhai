@@ -66,6 +66,30 @@ python3 scripts/prepare-erhai-dtb.py \
 
 脚本校验发布文件的哈希，提取内嵌 DTB，并将超出本次实测机型内存范围的固定 ramoops 保留区替换为 FDT_NOP。输出与实测 USB 版用的 Android DTB 逐字节相同，SHA-256 为 `9201ea6c07983a8c9fc74d3414bf7fcea46aa200f32b20f942bb4fc64a99133c`。
 
+## 编译和链接 USB／触控内核组件
+
+以下步骤适用于已完成 XNU 引导编译、并有 21H461 存储 ABI 审查结果的构建树。引导编译和存储审查还需要接入公开入口。以已准备的源码树为 `XNU_TREE`，以本地 USB 输入目录为 `USB_INPUTS`。用上文固定的 UniXNU 检出初始化 `drivers/QcomGeniSpi` 和 `kits/ArmSmmu4K` 子模块，并取得这两份原始源码文件。
+
+- [Pagani 编译辅助脚本](https://raw.githubusercontent.com/IssacL04/UniXNU-Pagani-Drivers/c888efd3ce1b817d13f28783a77cf689cb2255c9/drivers/PaganiBattery/scripts/build-pagani-battery.py)
+- [NativeKeyStoreEvents.cpp](https://raw.githubusercontent.com/UniXNU/NativeKeyStoreEvents/e59bac4ad1ac8825919ae94da8440a64d8ab90b3/NativeKeyStoreEvents.cpp)
+
+```sh
+python3 scripts/build-usb-kernel-objects.py \
+  --tree "$XNU_TREE" --unixnu ../UniXNU --clang "$LLVM_CLANG" \
+  --compile-helper "$INPUTS/build-pagani-battery.py" \
+  --keystore-source "$INPUTS/NativeKeyStoreEvents.cpp" \
+  --touch-firmware "$INPUTS/nt36536-xn242.bin" \
+  --storage-audit "$BUILD/storage-audit.json" --usb-inputs "$USB_INPUTS" \
+  --output "$BUILD/usb-objects"
+
+python3 scripts/link-usb-source-kernel.py \
+  --tree "$XNU_TREE" --usb-objects "$BUILD/usb-objects" \
+  --components "$BUILD/libErhaiUsbArmCpu.a" --linker "$APPLE_LD" \
+  --output "$BUILD/source-kernel.macho"
+```
+
+对象构建会验证两个根卷清单的签名和块表，并把本机取得的 NT36536 固件嵌入触控对象。链接入口使用指定的配套 archive，检查目标内核走 USB 根卷等待路径。配套 archive 里的 USB 控制器、Native HID、CPU 和原版存储 ABI 绑定，以及把 `source-kernel.macho` 变成最终预链接内核的步骤，还待接入公开构建。当前从零复现会在这些阶段之前停下。
+
 ## 打包本地构建产物
 
 已有对应构建产物时，可在 Linux 或 WSL 上安装 `dosfstools` 和 `mtools` 后运行。输入文件名可以自选，下例用 `BUILD` 指向本地构建目录。
