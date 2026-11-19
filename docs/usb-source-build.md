@@ -19,7 +19,7 @@
 | 1 | [准备目录与工具](#准备目录与工具)，确认平板型号和电脑环境。 | 能进入仓库根目录，Windows 能运行 Android Platform-Tools。 |
 | 2 | [生成 USB 供盘材料](#生成-usb-供盘材料)。已有 IPSW 可以通过 `--ipsw` 传入。 | USB 目录有 `OS.raw`、`SystemOS.dmg`、两份 `*.manifest.bin`、本地公钥和原版信任缓存。 |
 | 3 | [生成 RAM Data 和来宾 ADT](#生成-ram-data-和来宾-adt)。RAM Data 在 macOS 生成，ADT 可在 Linux 或 WSL 生成。 | `$BUILD/ram-data/data.dbrdisk`、`seed.json` 和 `$BUILD/kernel.macho.adt`。 |
-| 4 | [提取 Android DTB](#提取-android-dtb)，再[编译板级 UEFI](#编译板级-uefi)。 | `$BUILD/erhai.dtb` 和 `$BUILD/firmware/recovery-high-ram.fd`。 |
+| 4 | [提取 Android DTB](#提取-android-dtb)，再从[准备 UEFI 检出](#准备-uefi-检出)做到编译板级 UEFI。 | `$BUILD/erhai.dtb` 和 `$BUILD/firmware/recovery-high-ram.fd`。 |
 | 5 | [编译和链接 USB／触控内核组件](#编译和链接-usb-触控内核组件)。 | 需要生成与第 2 步清单和第 3 步 Data UUID 配套的 `$BUILD/kernel.compat.macho`。只有 `source-kernel.macho` 时还需要继续预链接。 |
 | 6 | [生成 boot.img](#生成-bootimg)。 | `$BUILD/boot.img` 和打包脚本打印的 SHA-256。 |
 | 7 | [临时启动并运行 USB 供盘](#临时启动并运行-usb-供盘)。 | Windows 供盘脚本开始报告读取，平板进入锁屏。 |
@@ -105,9 +105,26 @@ python3 scripts/prepare-erhai-dtb.py \
 - 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
 - `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
 
+### 准备 UEFI 检出
+
+在 Linux 或 WSL 使用专门的 UEFI 检出，固定到 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 并准备它的子模块。安装该检出的 `pip-requirements.txt` 和 Mu-Silicium Linux 构建依赖，包括 Clang/LLD、AArch64 GNU binutils、NASM、CMake、Ninja。UEFI 构建会使用其 EDK2 工具链和 Stuart 管理的外部依赖。
+
+```sh
+git clone https://github.com/UniXNU/uefi-sheng.git "$UEFI"
+git -C "$UEFI" checkout --detach 66421cb7bb5694843aec8de1ca3d1de4c20cca38
+git -C "$UEFI" submodule update --init --recursive
+python3 -m venv "$INPUTS/uefi-venv"
+. "$INPUTS/uefi-venv/bin/activate"
+python3 -m pip install -r "$UEFI/pip-requirements.txt" "uefi_firmware==1.16"
+git clone https://github.com/UniXNU/DarwinBoot.git ../UniXNU-DarwinBoot
+git -C ../UniXNU-DarwinBoot checkout --detach 85332b317ee80898fc78939ea64e6ca52d3837a3
+```
+
+脚本从这个提交提取 DarwinBoot 源码，从前文的 UniXNU `c1ecc5b7…` 提取 UEFI package 源码，在新构建目录应用补丁。
+
 ### UEFI 驱动输入
 
-实测版使用 [UniXNU/uefi-sheng](https://github.com/UniXNU/uefi-sheng/tree/66421cb7bb5694843aec8de1ca3d1de4c20cca38) 的 Pagani 驱动目录作模板，再替换其中 46 份 PE32 为 OPD2413 原厂模块。安装 `uefi_firmware==1.16`，并在已初始化子模块的 UEFI 检出中使用下列命令重建输入目录。
+实测版使用 [UniXNU/uefi-sheng](https://github.com/UniXNU/uefi-sheng/tree/66421cb7bb5694843aec8de1ca3d1de4c20cca38) 的 Pagani 驱动目录作模板，再替换其中 46 份 PE32 为 OPD2413 原厂模块。在上一段建立的虚拟环境中运行下列命令，生成 `Binaries/erhai`。
 
 ```sh
 python3 scripts/prepare-erhai-uefi-drivers.py \
@@ -119,19 +136,6 @@ python3 scripts/prepare-erhai-uefi-drivers.py \
 实测原厂 `uefi_a.img` 来自 OPD2413，SHA-256 为 `ca72c899177c54a6fa2876d65c9881ba1cbb4ef3dd3afcd584e33ec1194e2dac`。同机型公开记录指出原厂 `uefi` 分区位于一加官方固件包。此处还待确认与这个精确哈希对应的可下载包。提取工具和哈希清单已用本地样本验证，生成的 413 个文件全部与实测构建树一致。[原厂固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
 
 ### 编译板级 UEFI
-
-在 Linux 或 WSL 使用专门的 UEFI 检出，固定到 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 并准备它的子模块。安装该检出的 `pip-requirements.txt` 和 Mu-Silicium Linux 构建依赖，包括 Clang/LLD、AArch64 GNU binutils、NASM、CMake、Ninja。UEFI 构建会使用其 EDK2 工具链和 Stuart 管理的外部依赖。
-
-```sh
-git clone https://github.com/UniXNU/uefi-sheng.git "$UEFI"
-git -C "$UEFI" checkout --detach 66421cb7bb5694843aec8de1ca3d1de4c20cca38
-git -C "$UEFI" submodule update --init --recursive
-python3 -m pip install -r "$UEFI/pip-requirements.txt"
-git clone https://github.com/UniXNU/DarwinBoot.git ../UniXNU-DarwinBoot
-git -C ../UniXNU-DarwinBoot checkout --detach 85332b317ee80898fc78939ea64e6ca52d3837a3
-```
-
-脚本从这个提交提取 DarwinBoot 源码，从前文的 UniXNU `c1ecc5b7…` 提取 UEFI package 源码，在新构建目录应用补丁。
 
 `IOMEM` 指向从目标平板 Linux 以 root 读取的 `/proc/iomem` 文本。脚本检查实测固件使用的 4 GiB 高地址区间完全处于同一段未保留的 System RAM，输入 DTB 也必须匹配公开提取脚本的输出。
 
@@ -204,7 +208,7 @@ python3 scripts/package-usb-boot.py \
 确认 Fastboot 连接的是自己的 OPD2413。需要重启时先征得机主同意。在 Windows PowerShell 中执行临时启动命令。先把镜像路径替换成 Windows 可访问的完整路径。
 
 ```powershell
-$bootImage = 'C:\\path\\to\\boot.img'
+$bootImage = 'C:\path\to\boot.img'
 fastboot devices
 fastboot boot $bootImage
 ```
