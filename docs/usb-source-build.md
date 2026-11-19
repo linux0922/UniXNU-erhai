@@ -21,7 +21,7 @@ python3 scripts/prepare-usb-inputs.py \
 
 密钥生成命令只在第一次执行。后续构建复用同一份私钥，保留在本机。脚本默认从 [苹果 CDN](https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw) 提取 iPad7,1 的 iPadOS 17.7.11（21H461）组件。已有恢复包时可加 `--ipsw /path/to/restore.ipsw`。已有解码后的 OS 时可用 `--os-raw` 复用同一文件系统上的文件，脚本会校验内容。
 
-USB 服务读取 `OS.raw`、`SystemOS.dmg`、`OS.manifest.bin` 和 `SystemOS.manifest.bin`。两份清单由本地 RSA 密钥签发。构建启动镜像时，来宾必须信任同次生成的 `trusted-key.bin`，这样才会接受 USB 提供的清单。
+USB 服务读取 `OS.raw`、`SystemOS.dmg`、`OS.manifest.bin` 和 `SystemOS.manifest.bin`。两份清单由本地 RSA 密钥签发。启动镜像的构建步骤要读取同一目录中的 `owner-public.pem` 与两份清单，校验签名，并把清单摘要和分页索引编进内核。USB 服务需要使用那次构建对应的清单。`trusted-key.bin` 是清单工具输出的公钥锚。
 
 ## 运行 USB 供盘
 
