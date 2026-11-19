@@ -2,7 +2,7 @@
 
 The target is OnePlus Pad 2 Pro OPD2413 (erhai), iPadOS 17.7.11 build 21H461, with the system volumes streamed over USB. The reference run reached the lock screen, accepted a physical swipe to the Home Screen, then accepted Home Screen swipes and taps.
 
-Start with [the USB source-build guide](docs/usb-source-build.md). Use its pinned upstream sources and artifacts from the user's own build. Read the current checkout's guide before starting a device session. Treat the status of each build stage as a prerequisite for the next.
+Start with [the ordered USB build checklist](docs/usb-source-build.md#从零开始的执行顺序). Follow the expected output at each step. The source-kernel link produces `source-kernel.macho` and packaging requires the final `kernel.compat.macho` with the corresponding local USB manifests and RAM Data UUID. Use its pinned upstream sources and artifacts from the user's own build. Read the current checkout's guide before starting a device session. Treat the status of each build stage as a prerequisite for the next.
 
 1. Check the device model and existing boot setup. Ask for the user's approval before any reboot. Use only temporary `fastboot boot` for this profile. Keep the user's Android/Ubuntu boot setup, partitions and slots intact.
 2. Run `scripts/prepare-usb-inputs.py` on Linux or WSL. Keep the private signing key outside the Git checkout. Use the same two manifests for the kernel build and for the USB server.
