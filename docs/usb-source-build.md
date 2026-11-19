@@ -20,7 +20,7 @@
 | 2 | [生成 USB 供盘材料](#生成-usb-供盘材料)。已有 IPSW 可以通过 `--ipsw` 传入。 | USB 目录有 `OS.raw`、`SystemOS.dmg`、两份 `*.manifest.bin`、本地公钥和原版信任缓存。 |
 | 3 | [生成 RAM Data 和来宾 ADT](#生成-ram-data-和来宾-adt)。RAM Data 在 macOS 生成，ADT 可在 Linux 或 WSL 生成。 | `$BUILD/ram-data/data.dbrdisk`、`seed.json` 和 `$BUILD/kernel.macho.adt`。 |
 | 4 | [提取 Android DTB](#提取-android-dtb)，再[编译板级 UEFI](#编译板级-uefi)。 | `$BUILD/erhai.dtb` 和 `$BUILD/firmware/recovery-high-ram.fd`。 |
-| 5 | [编译和链接 USB／触控内核组件](#编译和链接-usb触控内核组件)。 | 需要生成与第 2 步清单和第 3 步 Data UUID 配套的 `$BUILD/kernel.compat.macho`。只有 `source-kernel.macho` 时还需要继续预链接。 |
+| 5 | [编译和链接 USB／触控内核组件](#编译和链接-usb-触控内核组件)。 | 需要生成与第 2 步清单和第 3 步 Data UUID 配套的 `$BUILD/kernel.compat.macho`。只有 `source-kernel.macho` 时还需要继续预链接。 |
 | 6 | [生成 boot.img](#生成-bootimg)。 | `$BUILD/boot.img` 和打包脚本打印的 SHA-256。 |
 | 7 | [临时启动并运行 USB 供盘](#临时启动并运行-usb-供盘)。 | Windows 供盘脚本开始报告读取，平板进入锁屏。 |
 | 8 | 在平板内屏从底部上滑，再横滑和点开设置。 | 进入主屏幕，实际触控能操作界面。 |
@@ -123,6 +123,10 @@ python3 scripts/prepare-erhai-uefi-drivers.py \
 在 Linux 或 WSL 使用专门的 UEFI 检出，固定到 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 并准备它的子模块。安装该检出的 `pip-requirements.txt` 和 Mu-Silicium Linux 构建依赖，包括 Clang/LLD、AArch64 GNU binutils、NASM、CMake、Ninja。UEFI 构建会使用其 EDK2 工具链和 Stuart 管理的外部依赖。
 
 ```sh
+git clone https://github.com/UniXNU/uefi-sheng.git "$UEFI"
+git -C "$UEFI" checkout --detach 66421cb7bb5694843aec8de1ca3d1de4c20cca38
+git -C "$UEFI" submodule update --init --recursive
+python3 -m pip install -r "$UEFI/pip-requirements.txt"
 git clone https://github.com/UniXNU/DarwinBoot.git ../UniXNU-DarwinBoot
 git -C ../UniXNU-DarwinBoot checkout --detach 85332b317ee80898fc78939ea64e6ca52d3837a3
 ```
@@ -141,7 +145,7 @@ python3 scripts/build-erhai-uefi.py \
 
 已在独立 Linux 检出中用准备好的厂商驱动和 Stuart 工具缓存完成 DEBUG 编译，输出为 2,785,280 字节，构建工具校验了 53 个固件组件。本次输出 SHA-256 为 `033ca0f1516818d31aea6375ce9f99be363783fbdc96ff3d6ced218f42d64128`，新编固件尚待实机启动验证。
 
-## 编译和链接 USB／触控内核组件
+## 编译和链接 USB 触控内核组件
 
 以下步骤适用于已完成 XNU 引导编译、并有 21H461 存储 ABI 审查结果的构建树。引导编译和存储审查还需要接入公开入口。以已准备的源码树为 `XNU_TREE`，以本地 USB 输入目录为 `USB_INPUTS`。用上文固定的 UniXNU 检出初始化 `drivers/QcomGeniSpi` 和 `kits/ArmSmmu4K` 子模块，并取得这两份原始源码文件。
 
