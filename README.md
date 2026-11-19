@@ -57,11 +57,11 @@ images/
 
 ## 从源码构建
 
-[USB 构建准备说明](https://github.com/linux0922/UniXNU-erhai/blob/erhai-usb-touch/docs/usb-source-build.md)包含 iPadOS 供盘文件的生成步骤、Windows USB 服务以及触控固件的下载和校验。板级 UEFI 和 USB／触控内核构建集成仍在整理。
+[USB 构建准备说明](docs/usb-source-build.md)包含 iPadOS 供盘文件的生成步骤、Windows USB 服务以及触控固件的下载和校验。板级 UEFI 和 USB／触控内核构建集成仍在整理。
 
 ## 一起参与
 
-开发分支为 `erhai-usb-touch`，修复请以这个分支为目标提交 Pull Request。为方便其他人复现，建议每个 PR 聚焦一个问题，并写明测试机型、系统版本、修改效果和未验证部分。
+修复请以 `main` 为目标提交 Pull Request。为方便其他人复现，建议每个 PR 聚焦一个问题，并写明测试机型、系统版本、修改效果和未验证部分。
 
 提交 Issue 时，请包含以下信息。
 
