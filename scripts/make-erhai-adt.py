@@ -90,7 +90,7 @@ def make_tree(memory_size, random_seed, *, dram_size=0x10000000,
               unique_chip_id=None, chip_id=None, ipad_identity=False,
               cpu_regs=(0,), psci_method='smc', packed_data_ramdisk=False,
               data_ramdisk=False, trust_cache=False,
-              root_match_volume_uuid=None):
+              root_match_volume_uuid=None, mark_ephemeral_storage=True):
     """Build the ADT as one node tree.
 
     memory_size is the contiguous window DarwinBoot hands to XNU; it is
@@ -137,7 +137,7 @@ def make_tree(memory_size, random_seed, *, dram_size=0x10000000,
                    ('effective-production-status-ap', struct.pack('<I', 0)),
                    ('certificate-security-mode', struct.pack('<I', 1)),
                    ('effective-security-mode-sep', struct.pack('<I', 1))]
-    if data_ramdisk or packed_data_ramdisk:
+    if mark_ephemeral_storage and (data_ramdisk or packed_data_ramdisk):
         chosen += [('ephemeral-storage', struct.pack('<I', 1))]
     if memory_size:
         chosen += [('darwinboot-memory-size', struct.pack('<Q', memory_size))]
@@ -228,6 +228,8 @@ def main(argv=None):
     parser.add_argument('--cpu-regs', default='0')
     parser.add_argument('--psci-method', choices=['smc', 'hvc'], default='smc')
     parser.add_argument('--packed-data-ramdisk', action='store_true')
+    parser.add_argument('--omit-ephemeral-storage-property', action='store_true',
+                        help='match the tested USB desktop ADT while retaining RAM-backed Data')
     parser.add_argument('--data-ramdisk', action='store_true')
     parser.add_argument('--trust-cache', action='store_true')
     args = parser.parse_args(argv)
@@ -245,6 +247,7 @@ def main(argv=None):
             cpu_regs=parse_cpu_regs(args.cpu_regs),
             psci_method=args.psci_method,
             packed_data_ramdisk=args.packed_data_ramdisk,
+            mark_ephemeral_storage=not args.omit_ephemeral_storage_property,
             data_ramdisk=args.data_ramdisk,
             trust_cache=args.trust_cache,
             root_match_volume_uuid=args.root_match_volume_uuid)
