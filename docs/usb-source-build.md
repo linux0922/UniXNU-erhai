@@ -33,6 +33,6 @@ python scripts/serve-usb-blocks.py --images-dir '<Windows 可访问的 USB 材�
 
 ## 其余启动输入
 
-- 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。已知文件来自 OPD2413 Linux ramdisk 中的 `lib/firmware/novatek/nt36536-xn242.bin`，长 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。具体可公开获取的发行包仍待核实。
+- 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
 - 设备 UEFI 在 `UniXNU/uefi-sheng` 的 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 基础上加入了本地 `erhaiPkg`、配置、DTB 和 BootShim 改动。还需要把该板级移植整理成可获取的源码，并记录原厂 DTB 的取法。
 - `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
