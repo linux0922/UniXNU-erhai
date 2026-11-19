@@ -1,0 +1,23 @@
+version = 1
+[boot]
+timeout = 0
+default = "xnu"
+[kits]
+autoload = false
+[[entry]]
+id = "xnu"
+title = "OnePlus Pad 2 Pro: RAM Recovery recovery-usb-touch-nt36536-auto"
+type = "xnu"
+path = "Payloads/kernel.macho"
+initrd = "Payloads/data.dbrdisk"
+args = "-v offline-mobile-graphics-load=1 offline-legacy-register=1 offline-legacy-phase=4 offline-legacy-gop=1 offline-legacy-pm=1 offline-legacy-validate=1 offline-legacy-transfer=1 offline-legacy-cpu-present=1 offline-legacy-unit-scale=2 sheng-fb-diff=1 -apfs_shared_datavolume sheng-disable-watchdogd=1 sheng-disable-jobs=com.apple.bluetoothd,com.apple.fairplayd.A2,com.apple.identityservicesd,com.apple.locationd erhai-usb=1 erhai-block=1 serial=3 debug=0x14e kt_fixed_zones=240 boot-progress=2 cpus=1 armcpu-diagnostics=1 armcpu-spi-ipi=1 -no_slto_panic -enable_kprintf_spam"
+[[entry]]
+id = "reset"
+title = "Restart"
+type = "action"
+action = "reset"
+[[entry]]
+id = "shutdown"
+title = "Power off"
+type = "action"
+action = "shutdown"
