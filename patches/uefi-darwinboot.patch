@@ -1,0 +1,247 @@
+diff --git a/DarwinBootPkg/Driver/DarwinBoot.c b/DarwinBootPkg/Driver/DarwinBoot.c
+--- a/DarwinBootPkg/Driver/DarwinBoot.c
++++ b/DarwinBootPkg/Driver/DarwinBoot.c
+@@ -182,7 +182,7 @@
+ 
+ STATIC
+ BOOLEAN
+-AdtNode (CONST UINT8 *Data, UINTN Size, UINTN *Offset, UINTN Depth, UINTN ParentPath, UINTN *RamdiskOffset, UINTN *TrustCacheOffset, UINT64 *WindowSize, BOOLEAN *KeepPacked)
++AdtNode (CONST UINT8 *Data, UINTN Size, UINTN *Offset, UINTN Depth, UINTN ParentPath, UINTN *RamdiskOffset, UINTN *TrustCacheOffset, UINT64 *WindowSize, BOOLEAN *KeepPacked, UINTN DramOffsets[2])
+ {
+   UINT32 Properties;
+   UINT32 Children;
+@@ -192,6 +192,8 @@
+   UINTN  Candidate;
+   UINTN  TrustCandidate;
+   UINTN  MemoryCandidate;
++  UINTN  DramCandidate[2];
++  UINTN  Field;
+   CONST UINT8 *Name;
+   UINTN  NameLength;
+ 
+@@ -200,6 +202,7 @@
+   Candidate = MAX_UINTN;
+   TrustCandidate = MAX_UINTN;
+   MemoryCandidate = MAX_UINTN;
++  DramCandidate[0] = DramCandidate[1] = MAX_UINTN;
+   if ((Depth > 64) || (Size - *Offset < 8)) { return FALSE; }
+   Properties = U32 (Data + *Offset);
+   Children = U32 (Data + *Offset + 4);
+@@ -233,6 +236,12 @@
+       if ((MemoryCandidate != MAX_UINTN) || (Length != 8)) { return FALSE; }
+       MemoryCandidate = *Offset;
+     }
++    for (Field = 0; Field < 2; Field++) {
++      if (AsciiStrCmp ((CONST CHAR8 *)(Data + *Offset - 36), Field == 0 ? "dram-base" : "dram-size") == 0) {
++        if ((DramCandidate[Field] != MAX_UINTN) || (Length != 8)) { return FALSE; }
++        DramCandidate[Field] = *Offset;
++      }
++    }
+     *Offset += Length;
+     if (ALIGN_VALUE (*Offset, 4) > Size) { return FALSE; }
+     *Offset = ALIGN_VALUE (*Offset, 4);
+@@ -254,9 +263,15 @@
+     *WindowSize = U64 (Data + MemoryCandidate);
+     if (!DarwinWindowSizeValid (*WindowSize)) { return FALSE; }
+   }
++  for (Field = 0; Field < 2; Field++) {
++    if (DramCandidate[Field] != MAX_UINTN) {
++      if ((Path != 1) || (DramOffsets[Field] != MAX_UINTN)) { return FALSE; }
++      DramOffsets[Field] = DramCandidate[Field];
++    }
++  }
+   if (Children > (Size - *Offset) / 8) { return FALSE; }
+   for (Index = 0; Index < Children; Index++) {
+-    if (!AdtNode (Data, Size, Offset, Depth + 1, Path, RamdiskOffset, TrustCacheOffset, WindowSize, KeepPacked)) { return FALSE; }
++    if (!AdtNode (Data, Size, Offset, Depth + 1, Path, RamdiskOffset, TrustCacheOffset, WindowSize, KeepPacked, DramOffsets)) { return FALSE; }
+   }
+   return TRUE;
+ }
+@@ -439,6 +454,81 @@
+   }
+   FreePool (Map);
+   return Status;
++}
++
++// Experimental RAM-only loader. DBRDISK1 metadata is bounded before any write.
++STATIC EFI_STATUS RestoreReadExact(EFI_FILE_PROTOCOL *File, VOID *Data, UINTN Bytes) {
++  UINTN Actual;
++  EFI_STATUS Status;
++  while(Bytes) {
++    Actual=MIN(Bytes,SIZE_1MB);
++    Status=File->Read(File,&Actual,Data);
++    if(EFI_ERROR(Status))return Status;
++    if(!Actual || Actual>Bytes)return EFI_COMPROMISED_DATA;
++    Bytes-=Actual; Data=(UINT8 *)Data+Actual;
++  }
++  return EFI_SUCCESS;
++}
++STATIC EFI_STATUS RestoreStream(EFI_FILE_PROTOCOL *Root, VOID *Destination, UINTN Capacity) {
++  EFI_FILE_PROTOCOL *File=NULL;
++  EFI_STATUS Status;
++  UINT8 Header[32],Extra;
++  UINT8 *Extents=NULL;
++  UINT64 Logical,Count,Offset,Length,End=0;
++  UINTN I,Bytes;
++  Status=Root->Open(Root,&File,L"\\EFI\\UniXNU\\Payloads\\restore.dbrdisk",EFI_FILE_MODE_READ,0);
++  if(EFI_ERROR(Status))return Status;
++  Status=RestoreReadExact(File,Header,sizeof(Header));
++  if(EFI_ERROR(Status))goto Done;
++  Logical=U64(Header+16); Count=U64(Header+24);
++  if(CompareMem(Header,"DBRDISK1",8) || U32(Header+8)!=1 || U32(Header+12)!=4096 ||
++     Logical!=Capacity || !Count || Count>65536) {Status=EFI_COMPROMISED_DATA;goto Done;}
++  Extents=AllocatePool((UINTN)Count*16);
++  if(Extents==NULL){Status=EFI_OUT_OF_RESOURCES;goto Done;}
++  Status=RestoreReadExact(File,Extents,(UINTN)Count*16);
++  if(EFI_ERROR(Status))goto Done;
++  for(I=0;I<Count;++I) {
++    Offset=U64(Extents+16*I); Length=U64(Extents+16*I+8);
++    if(!Length || ((Offset|Length)&4095) || Offset<End || Offset>Logical || Length>Logical-Offset) {
++      Status=EFI_COMPROMISED_DATA;goto Done;
++    }
++    End=Offset+Length;
++  }
++  // The owned window has already been zeroed. Only nonzero extents are read.
++  for(I=0;I<Count;++I) {
++    Offset=U64(Extents+16*I); Length=U64(Extents+16*I+8);
++    Status=RestoreReadExact(File,(UINT8 *)Destination+(UINTN)Offset,(UINTN)Length);
++    if(EFI_ERROR(Status))goto Done;
++  }
++  Bytes=1; Status=File->Read(File,&Bytes,&Extra);
++  if(!EFI_ERROR(Status) && (Bytes || CompareMem((UINT8 *)Destination+32,"NXSB",4)))Status=EFI_COMPROMISED_DATA;
++Done:
++  if(Extents!=NULL)FreePool(Extents);
++  File->Close(File);
++  return Status;
++}
++
++// These are the EDK2 LzmaCustomDecompressLib entry points.
++RETURN_STATUS EFIAPI LzmaUefiDecompressGetInfo(CONST VOID *,UINT32,UINT32 *,UINT32 *);
++RETURN_STATUS EFIAPI LzmaUefiDecompress(CONST VOID *,UINTN,VOID *,VOID *);
++STATIC EFI_STATUS ExpandKernel(VOID **Image, UINTN *Size) {
++  UINT32 Expanded,ScratchBytes;
++  VOID *Decoded,*Scratch;
++  RETURN_STATUS Result;
++  if(*Size<21 || CompareMem(*Image,"ERHLZMA1",8))return EFI_UNSUPPORTED;
++  Result=LzmaUefiDecompressGetInfo((UINT8 *)*Image+8,(UINT32)*Size-8,&Expanded,&ScratchBytes);
++  if(RETURN_ERROR(Result) || !Expanded || Expanded>SIZE_128MB || ScratchBytes>SIZE_1MB)return EFI_COMPROMISED_DATA;
++  Decoded=AllocatePool(Expanded); Scratch=AllocatePool(ScratchBytes);
++  if(Decoded==NULL || Scratch==NULL) {
++    if(Decoded!=NULL)FreePool(Decoded);
++    if(Scratch!=NULL)FreePool(Scratch);
++    return EFI_OUT_OF_RESOURCES;
++  }
++  Result=LzmaUefiDecompress((UINT8 *)*Image+8,*Size-8,Decoded,Scratch);
++  FreePool(Scratch);
++  if(RETURN_ERROR(Result) || U32(Decoded)!=0xfeedfacf) {FreePool(Decoded);return EFI_COMPROMISED_DATA;}
++  FreePool(*Image);*Image=Decoded;*Size=Expanded;
++  return EFI_SUCCESS;
+ }
+ 
+ STATIC
+@@ -470,10 +560,12 @@
+   UINT64                          WindowSize;
+   UINT64                          RamdiskAddress;
+   UINTN                           RamdiskOffset;
++  UINTN                           DramOffsets[2];
+   UINTN                           RamdiskBytes;
+   UINTN                           RamdiskExpandedSize;
+   BOOLEAN                         RamdiskPacked;
+   BOOLEAN                         KeepPacked;
++  BOOLEAN                         StreamRestore;
+   UINTN                           TrustCacheOffset;
+   UINT64                          TrustCacheAddress;
+   DARWIN_BOOT_ARGS                *Args;
+@@ -518,6 +610,9 @@
+   if (EFI_ERROR (Status)) { return Status; }
+   Status = ReadFile (Root, Request->KernelPath, SIZE_128MB, &Image, &ImageSize);
+   if (EFI_ERROR (Status)) { goto Fail; }
++  DiagDraw (L"RAM RECOVERY 2 - expanding verified kernel", 0);
++  Status = ExpandKernel (&Image, &ImageSize);
++  if (EFI_ERROR (Status)) { goto Fail; }
+   Status = ParseKernel (Image, ImageSize, &Kernel);
+   if (EFI_ERROR (Status)) { goto Fail; }
+   Length = StrSize (Request->KernelPath);
+@@ -529,14 +624,21 @@
+   if (EFI_ERROR (Status)) { goto Fail; }
+   Offset = 0;
+   RamdiskOffset = MAX_UINTN;
++  DramOffsets[0] = DramOffsets[1] = MAX_UINTN;
+   TrustCacheOffset = MAX_UINTN;
+   WindowSize = 0;
+   KeepPacked = FALSE;
+-  if (!AdtNode (Tree, TreeSize, &Offset, 0, 3, &RamdiskOffset, &TrustCacheOffset, &WindowSize, &KeepPacked) || (Offset != TreeSize)) { Status = EFI_COMPROMISED_DATA; goto Fail; }
++  if (!AdtNode (Tree, TreeSize, &Offset, 0, 3, &RamdiskOffset, &TrustCacheOffset, &WindowSize, &KeepPacked, DramOffsets) || (Offset != TreeSize)) { Status = EFI_COMPROMISED_DATA; goto Fail; }
++  if ((DramOffsets[0] == MAX_UINTN) != (DramOffsets[1] == MAX_UINTN)) { Status = EFI_COMPROMISED_DATA; goto Fail; }
++  if ((DramOffsets[0] != MAX_UINTN) && ((U64 ((UINT8 *)Tree + DramOffsets[0]) == 0) != (U64 ((UINT8 *)Tree + DramOffsets[1]) == 0))) { Status = EFI_COMPROMISED_DATA; goto Fail; }
+   if (KeepPacked && (!RamdiskPacked || (RamdiskOffset == MAX_UINTN))) { Status = EFI_COMPROMISED_DATA; goto Fail; }
+   if (WindowSize == 0) { WindowSize = WINDOW_SIZE; }
+   if (Kernel.Base > MAX_UINT64 - WindowSize) { Status = EFI_LOAD_ERROR; goto Fail; }
+-  if (Request->Ramdisk != NULL) {
++  StreamRestore = (Request->Ramdisk == NULL) && (RamdiskOffset != MAX_UINTN) && !KeepPacked;
++  if (StreamRestore) {
++    RamdiskExpandedSize = 176 * SIZE_1MB;
++  }
++  if ((Request->Ramdisk != NULL) || StreamRestore) {
+     if ((RamdiskOffset == MAX_UINTN) || (U64 ((UINT8 *)Tree + RamdiskOffset) != 0) ||
+         (U64 ((UINT8 *)Tree + RamdiskOffset + 8) != 0)) { Status = EFI_COMPROMISED_DATA; goto Fail; }
+   } else if (RamdiskOffset != MAX_UINTN) {
+@@ -581,13 +683,29 @@
+   Args->MemorySize = WindowSize;
+   Args->MemorySizeActual = WindowSize;
+   Args->TopOfKernelData = Address + Used;
++  // Bound the early console mapping until the normal VM allocator is available.
++  Video[4] = MIN (Video[4], 600);
+   CopyMem (Args->Video, Video, sizeof (Video));
+   Args->DeviceTree = Kernel.Base + TreeAddress - Address;
+   Args->DeviceTreeLength = (UINT32)TreeSize;
+   CopyMem (Args->CommandLine, CommandLine, sizeof (CommandLine));
+   CopyMem ((VOID *)(UINTN)TreeAddress, Tree, TreeSize);
+-  if (Request->Ramdisk != NULL) {
+-    if (KeepPacked) { CopyMem ((VOID *)(UINTN)RamdiskAddress, Request->Ramdisk, Request->RamdiskSize); }
++  // Zero placeholders request the XNU-visible RAM range actually owned by this boot.
++  if ((DramOffsets[0] != MAX_UINTN) && (U64 ((UINT8 *)Tree + DramOffsets[0]) == 0)) {
++    WriteUnaligned64 ((UINT64 *)(UINTN)(TreeAddress + DramOffsets[0]), Address);
++    WriteUnaligned64 ((UINT64 *)(UINTN)(TreeAddress + DramOffsets[1]), WindowSize);
++  }
++  if (StreamRestore) {
++    if (Image != NULL) { FreePool (Image); Image = NULL; }
++    DiagDraw (L"RAM RECOVERY 2 - streaming APFS into owned RAM", 0);
++    Status = RestoreStream (Root, (VOID *)(UINTN)RamdiskAddress, (UINTN)RamdiskExpandedSize);
++    if (EFI_ERROR (Status)) { goto Fail; }
++    DiagDraw (L"RAM RECOVERY 2 - APFS loaded", 0);
++  }
++  if ((Request->Ramdisk != NULL) || StreamRestore) {
++    if (StreamRestore) {
++      // Already read directly into the kernel's window.
++    } else if (KeepPacked) { CopyMem ((VOID *)(UINTN)RamdiskAddress, Request->Ramdisk, Request->RamdiskSize); }
+     else { CopyRamdisk ((VOID *)(UINTN)RamdiskAddress, Request->Ramdisk, Request->RamdiskSize, RamdiskPacked); }
+     WriteUnaligned64 ((UINT64 *)(UINTN)(TreeAddress + RamdiskOffset), RamdiskAddress);
+     WriteUnaligned64 ((UINT64 *)(UINTN)(TreeAddress + RamdiskOffset + 8), KeepPacked ? Request->RamdiskSize : RamdiskBytes);
+@@ -598,7 +716,7 @@
+     WriteUnaligned64 ((UINT64 *)(UINTN)(TreeAddress + TrustCacheOffset + 8), TrustCacheSize);
+     FreePool (TrustCaches); TrustCaches = NULL;
+   }
+-  FreePool (Image); Image = NULL;
++  if (Image != NULL) { FreePool (Image); Image = NULL; }
+   FreePool (Tree); Tree = NULL;
+   FreePool (TreePath); TreePath = NULL;
+   Root->Close (Root); Root = NULL;
+@@ -629,7 +747,8 @@
+   DEBUG ((DEBUG_ERROR, "ID_AA64MMFR0_EL1 0x%lx  (PARange %lu, 4 KiB granule %a)\n", READ_SYSREG (id_aa64mmfr0_el1),
+           READ_SYSREG (id_aa64mmfr0_el1) & 0xF, (((READ_SYSREG (id_aa64mmfr0_el1) >> 28) & 0xF) == 0xF) ? "NOT supported" : "supported"));
+   DEBUG ((DEBUG_ERROR, "ID_AA64PFR0_EL1  0x%lx\n", READ_SYSREG (id_aa64pfr0_el1)));
+-  DEBUG ((DEBUG_ERROR, "\nExiting boot services. A green bar across the top\nmeans the kernel entry code ran.\n"));
++  DEBUG ((DEBUG_ERROR, "CNTFRQ_EL0 %lu Hz  MPIDR_EL1 0x%lx\n", READ_SYSREG (cntfrq_el0), READ_SYSREG (mpidr_el1)));
++  DEBUG ((DEBUG_ERROR, "\nExiting boot services. Green marks the loader trampoline.\nXNU prints its own S1 entry checkpoint.\n"));
+   for (Attempt = 0; Attempt < 3; Attempt++) {
+     MapSize = Capacity;
+     Status = gBS->GetMemoryMap (&MapSize, Map, &Key, &Stride, &Version);
+@@ -647,6 +766,7 @@
+   CpuDeadLoop ();
+   return EFI_ABORTED;
+ Fail:
++  { CHAR16 Line[96]; UnicodeSPrint (Line, sizeof (Line), L"RAM RECOVERY 2 FAILED %r", Status); DiagDraw (Line, 0); for (;;) { gBS->Stall (100000); } }
+   if (Root != NULL) { Root->Close (Root); }
+   if (Image != NULL) { FreePool (Image); }
+   if (Tree != NULL) { FreePool (Tree); }
