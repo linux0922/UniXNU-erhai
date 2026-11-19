@@ -57,7 +57,9 @@ images/
 
 ## 从源码构建
 
-[USB 构建准备说明](docs/usb-source-build.md)包含 iPadOS 供盘文件的生成步骤、Windows USB 服务以及触控固件的下载和校验。板级 UEFI 和 USB／触控内核构建集成仍在整理。
+把本页发给 AI 时，请让它先读 [AGENTS.md](AGENTS.md)，并以「内屏从锁屏上滑进入主屏幕，横滑和点按有效」作为实机验收。
+
+[USB 构建准备说明](docs/usb-source-build.md)包含 iPadOS 供盘材料和信任缓存的生成、启动镜像打包、Windows USB 服务以及触控固件校验。板级 UEFI 和 USB／触控内核构建集成仍在整理。
 
 ## 一起参与
 
