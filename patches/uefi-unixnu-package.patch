@@ -1,0 +1,220 @@
+diff --git a/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c b/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
+--- a/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
++++ b/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c
+@@ -10,6 +10,7 @@
+ #include <Library/DebugLib.h>
+ #include <Library/FdtLib.h>
+ #include <Library/HobLib.h>
++#include <Library/PcdLib.h>
+ #include <Library/UefiBootServicesTableLib.h>
+ #include <Protocol/BlockIo.h>
+ #include <Protocol/DevicePath.h>
+@@ -130,37 +131,14 @@
+ 
+ STATIC
+ VOID
+-PublishInitrd (
+-  IN CONST VOID  *Fdt
++PublishRamDisk (
++  IN UINT64  Start,
++  IN UINT64  End
+   )
+ {
+   EFI_STATUS  Status;
+-  INT32       Chosen;
+-  CONST VOID  *StartProp;
+-  CONST VOID  *EndProp;
+-  INT32       StartLength;
+-  INT32       EndLength;
+-  UINT64      Start;
+-  UINT64      End;
+   EFI_HANDLE  Handle;
+ 
+-  Chosen = FdtPathOffset (Fdt, "/chosen");
+-  if (Chosen < 0) {
+-    DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: no /chosen\n"));
+-    return;
+-  }
+-
+-  StartProp = FdtGetProp (Fdt, Chosen, "linux,initrd-start", &StartLength);
+-  EndProp   = FdtGetProp (Fdt, Chosen, "linux,initrd-end", &EndLength);
+-  if ((StartProp == NULL) || (EndProp == NULL) ||
+-      ((StartLength != 4) && (StartLength != 8)) || ((EndLength != 4) && (EndLength != 8)))
+-  {
+-    DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: no initrd in /chosen\n"));
+-    return;
+-  }
+-
+-  Start = ReadCells (StartProp, StartLength / 4);
+-  End   = ReadCells (EndProp, EndLength / 4);
+   if (End <= Start) {
+     DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: empty initrd 0x%lx-0x%lx\n", Start, End));
+     return;
+@@ -200,6 +178,74 @@
+                   NULL
+                   );
+   DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: initrd block device 0x%lx size 0x%lx %r\n", Start, End - Start, Status));
++  if (!EFI_ERROR (Status)) {
++    gBS->ConnectController (Handle, NULL, NULL, TRUE);
++  }
++}
++
++STATIC
++VOID
++PublishInitrd (
++  IN CONST VOID  *Fdt
++  )
++{
++  INT32       Chosen;
++  CONST VOID  *StartProp;
++  CONST VOID  *EndProp;
++  INT32       StartLength;
++  INT32       EndLength;
++  UINT64      Start;
++  UINT64      End;
++
++  Chosen = FdtPathOffset (Fdt, "/chosen");
++  if (Chosen < 0) {
++    DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: no /chosen\n"));
++    return;
++  }
++
++  StartProp = FdtGetProp (Fdt, Chosen, "linux,initrd-start", &StartLength);
++  EndProp   = FdtGetProp (Fdt, Chosen, "linux,initrd-end", &EndLength);
++  if ((FdtGetProp (Fdt, Chosen, "unixnu,payload-start", NULL) != NULL) ||
++      (StartProp == NULL) || (EndProp == NULL) ||
++      ((StartLength != 4) && (StartLength != 8)) || ((EndLength != 4) && (EndLength != 8)))
++  {
++    //
++    // erhai / OnePlus: the ABL replaces the ramdisk field on `fastboot boot`,
++    // so the payload rides inside the kernel field right behind the firmware
++    // volume.  The packer records that window in /chosen as
++    // unixnu,payload-start / unixnu,payload-size.
++    //
++    CONST VOID  *SizeProp;
++    INT32       SizeLength;
++    UINT64      PayloadStart;
++    UINT64      PayloadSize;
++
++    StartProp = FdtGetProp (Fdt, Chosen, "unixnu,payload-start", &StartLength);
++    SizeProp  = FdtGetProp (Fdt, Chosen, "unixnu,payload-size", &SizeLength);
++    if ((StartProp == NULL) || (SizeProp == NULL) ||
++        ((StartLength != 4) && (StartLength != 8)) || ((SizeLength != 4) && (SizeLength != 8)))
++    {
++      DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: no initrd and no embedded payload in /chosen\n"));
++      return;
++    }
++
++    PayloadStart = ReadCells (StartProp, StartLength / 4);
++    PayloadSize  = ReadCells (SizeProp, SizeLength / 4);
++    if (PayloadSize == 0) {
++      DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: embedded payload size is zero\n"));
++      return;
++    }
++
++    DEBUG ((DEBUG_ERROR, "UNIXNURAMDISK: embedded payload 0x%lx size 0x%lx\n", PayloadStart, PayloadSize));
++    Start = PayloadStart;
++    End   = PayloadStart + PayloadSize;
++  }
++  else
++  {
++    Start = ReadCells (StartProp, StartLength / 4);
++    End   = ReadCells (EndProp, EndLength / 4);
++  }
++  PublishRamDisk (Start, End);
+ }
+ 
+ EFI_STATUS
+@@ -211,6 +257,23 @@
+ {
+   EFI_HOB_GUID_TYPE  *Hob;
+   UINT64             Dtb;
++
++  if (FixedPcdGet64 (PcdUniXNURamDiskHandoff) != 0) {
++    CONST UINT64  *Handoff;
++    UINT64        Size;
++
++    Handoff = (CONST UINT64 *)(UINTN)FixedPcdGet64 (PcdUniXNURamDiskHandoff);
++    Size = Handoff[1];
++    if ((Handoff[0] == 0x554E49584E555241ULL) &&
++        (Size >= RAM_BLOCK_SIZE) && (Size <= 256ULL * 1024 * 1024 - EFI_PAGE_SIZE) &&
++        ((Size % RAM_BLOCK_SIZE) == 0))
++    {
++      Dtb = FixedPcdGet64 (PcdUniXNURamDiskHandoff) + EFI_PAGE_SIZE;
++      PublishRamDisk (Dtb, Dtb + Size);
++    }
++
++    return EFI_SUCCESS;
++  }
+ 
+   Hob = GetFirstGuidHob (&mEntryArgHobGuid);
+   if (Hob == NULL) {
+diff --git a/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf b/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+--- a/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
++++ b/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+@@ -11,6 +11,7 @@
+ 
+ [Packages]
+   MdePkg/MdePkg.dec
++  UniXNUPkg/UniXNUPkg.dec
+ 
+ [LibraryClasses]
+   BaseLib
+@@ -21,6 +22,11 @@
+   UefiBootServicesTableLib
+   UefiDriverEntryPoint
+ 
++  PcdLib
++
++[FixedPcd]
++  gUniXNUPkgTokenSpaceGuid.PcdUniXNURamDiskHandoff
++
+ [Protocols]
+   gEfiBlockIoProtocolGuid                       ## PRODUCES
+   gEfiDevicePathProtocolGuid                    ## PRODUCES
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Config.c b/package/UniXNUPkg/Library/UniXNULib/Config.c
+--- a/package/UniXNUPkg/Library/UniXNULib/Config.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Config.c
+@@ -1385,7 +1385,7 @@
+   }
+ 
+   Boot                    = TomlGet (Root, "boot");
+-  Config->Timeout         = (INTN)TomlGetInteger (Boot, "timeout", 5);
++  Config->Timeout         = (INTN)TomlGetInteger (Boot, "timeout", -1);
+   Config->RotateSeconds   = (UINTN)MAX (0, TomlGetInteger (Boot, "rotate", 0));
+   Config->FallbackTimeout = (UINTN)MAX (1, TomlGetInteger (Boot, "fallback_timeout", 10));
+   Config->ConnectAll      = TomlGetBoolean (Boot, "connect_all", TRUE);
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Menu.c b/package/UniXNUPkg/Library/UniXNULib/Menu.c
+--- a/package/UniXNUPkg/Library/UniXNULib/Menu.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Menu.c
+@@ -112,9 +112,9 @@
+   HasInput = (CountInputDevices () > 0);
+ 
+   if (!Countdown) {
+-    RemainingMs = HasInput ? -1 : (INTN)Config->FallbackTimeout * 1000;
++    RemainingMs = -1;
+   } else if (Config->Timeout < 0) {
+-    RemainingMs = HasInput ? -1 : (INTN)Config->FallbackTimeout * 1000;
++    RemainingMs = -1;
+   } else {
+     RemainingMs = Config->Timeout * 1000;
+   }
+@@ -133,7 +133,7 @@
+     Ui,
+     1,
+     HasInput ? L"Up/Down: select    Enter: boot    1-9: boot entry    Esc: stop timer"
+-             : L"No input device: the default entry boots when the timer ends"
++             : L"ERHAI-MARKER | no input device; menu holds"
+     );
+   if (Ui->Notice[0] != L'\0') {
+     UniXNUUiDrawStatus (Ui, 2, Ui->Notice);
+diff --git a/package/UniXNUPkg/UniXNUPkg.dec b/package/UniXNUPkg/UniXNUPkg.dec
+--- a/package/UniXNUPkg/UniXNUPkg.dec
++++ b/package/UniXNUPkg/UniXNUPkg.dec
+@@ -50,3 +50,6 @@
+ 
+   ## ASCII model name reported by menu plugins that export device files.
+   gUniXNUPkgTokenSpaceGuid.PcdUniXNUDeviceModel|"UniXNU"|VOID*|0x00000004
++
++  ## Optional address of the BootShim RAM disk handoff for this platform.
++  gUniXNUPkgTokenSpaceGuid.PcdUniXNURamDiskHandoff|0|UINT64|0x00000005
