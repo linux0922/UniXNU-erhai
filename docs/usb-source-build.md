@@ -1,6 +1,6 @@
 # 尔海 USB 版的源码构建准备
 
-目标机型为 OnePlus Pad 2 Pro OPD2413（erhai）。已实测的版本通过 Fastboot 临时启动后，用 USB 从电脑读取系统卷，内屏能从锁屏上滑进入主屏幕，并能横滑和点按。当前仓库可准备供盘材料、生成来宾 ADT 和 RAM Data、打包本地组件并运行 USB 服务。完整启动镜像仍需要补齐板级 UEFI、Android DTB 和 USB／触控内核的公开构建入口。
+目标机型为 OnePlus Pad 2 Pro OPD2413（erhai）。已实测的版本通过 Fastboot 临时启动后，用 USB 从电脑读取系统卷，内屏能从锁屏上滑进入主屏幕，并能横滑和点按。当前仓库可准备供盘材料、生成 Android DTB、来宾 ADT 和 RAM Data、打包本地组件并运行 USB 服务。完整启动镜像仍需要补齐板级 UEFI 和 USB／触控内核的公开构建入口。
 
 ## 交给 AI 或自己操作
 
@@ -54,6 +54,18 @@ python3 scripts/make-erhai-adt.py --output "$BUILD/kernel.macho.adt" \
   --root-match-volume-uuid 04769D26-2CA0-4825-B443-E2E5F88300F2
 ```
 
+## 提取 Android DTB
+
+从 [同机型 Linux 项目的 v0.6.0 发布页](https://github.com/yzddmr6/onepluspad-2pro-mainline/releases/tag/v0.6.0) 取得 [`ubuntu-pad2pro-v0.6.0-setup-boot.img`](https://github.com/yzddmr6/onepluspad-2pro-mainline/releases/download/v0.6.0/ubuntu-pad2pro-v0.6.0-setup-boot.img)，作为文件输入运行。
+
+```sh
+python3 scripts/prepare-erhai-dtb.py \
+  --setup-boot /path/to/ubuntu-pad2pro-v0.6.0-setup-boot.img \
+  --output "$BUILD/erhai.dtb"
+```
+
+脚本校验发布文件的哈希，提取内嵌 DTB，并将超出本次实测机型内存范围的固定 ramoops 保留区替换为 FDT_NOP。输出与实测 USB 版用的 Android DTB 逐字节相同，SHA-256 为 `9201ea6c07983a8c9fc74d3414bf7fcea46aa200f32b20f942bb4fc64a99133c`。
+
 ## 打包本地构建产物
 
 已有对应构建产物时，可在 Linux 或 WSL 上安装 `dosfstools` 和 `mtools` 后运行。输入文件名可以自选，下例用 `BUILD` 指向本地构建目录。
@@ -80,5 +92,5 @@ python scripts/serve-usb-blocks.py --images-dir '<Windows 可访问的 USB 材�
 ## 其余启动输入
 
 - 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
-- 设备 UEFI 在 `UniXNU/uefi-sheng` 的 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 基础上加入了本地 `erhaiPkg`、配置、DTB 和 BootShim 改动。Android 打包使用的板级 DTB 是独立输入，实测文件 SHA-256 为 `9201ea6c07983a8c9fc74d3414bf7fcea46aa200f32b20f942bb4fc64a99133c`。此前从不同版本的原厂 `boot`／`vendor_boot` 提取的 DTB 尚未与它对齐，板级 UEFI 和这份 Android DTB 的公开构建仍待完成。
+- 设备 UEFI 在 `UniXNU/uefi-sheng` 的 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 基础上加入了本地 `erhaiPkg`、配置和 BootShim 改动。板级 UEFI 的公开构建仍待完成。
 - `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
