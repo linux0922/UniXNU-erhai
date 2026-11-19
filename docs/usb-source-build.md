@@ -92,5 +92,17 @@ python scripts/serve-usb-blocks.py --images-dir '<Windows 可访问的 USB 材�
 ## 其余启动输入
 
 - 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
-- 设备 UEFI 在 `UniXNU/uefi-sheng` 的 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 基础上加入了本地 `erhaiPkg`、配置和 BootShim 改动。板级 UEFI 的公开构建仍待完成。
 - `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
+
+### UEFI 驱动输入
+
+实测版使用 [UniXNU/uefi-sheng](https://github.com/UniXNU/uefi-sheng/tree/66421cb7bb5694843aec8de1ca3d1de4c20cca38) 的 Pagani 驱动目录作模板，再替换其中 46 份 PE32 为 OPD2413 原厂模块。安装 `uefi_firmware==1.16`，并在已初始化子模块的 UEFI 检出中使用下列命令重建输入目录。
+
+```sh
+python3 scripts/prepare-erhai-uefi-drivers.py \
+  --stock-uefi /path/to/local/uefi_a.img \
+  --pagani-binaries "$UEFI/Binaries/pagani" \
+  --output "$UEFI/Binaries/erhai"
+```
+
+实测原厂 `uefi_a.img` 来自 OPD2413，SHA-256 为 `ca72c899177c54a6fa2876d65c9881ba1cbb4ef3dd3afcd584e33ec1194e2dac`。同机型公开记录指出原厂 `uefi` 分区位于一加官方固件包。此处还待确认与这个精确哈希对应的可下载包。提取工具和哈希清单已用本地样本验证，生成的 413 个文件全部与实测构建树一致。板级 `erhaiPkg`、高内存版固件和 BootShim 的公开编译仍待接入。[原厂固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
