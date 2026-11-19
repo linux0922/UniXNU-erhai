@@ -1,6 +1,14 @@
 # 尔海 USB 版的源码构建准备
 
-目标机型为 OnePlus Pad 2 Pro OPD2413（erhai）。已实测的版本通过 Fastboot 临时启动后，用 USB 从电脑读取系统卷，内屏可进入主屏幕并使用触控。本分支的脚本目前覆盖电脑端供盘材料的生成与服务。完整启动镜像的构建还需要整理板级 UEFI、设备 DTB 和 USB／触控内核集成。
+目标机型为 OnePlus Pad 2 Pro OPD2413（erhai）。已实测的版本通过 Fastboot 临时启动后，用 USB 从电脑读取系统卷，内屏能从锁屏上滑进入主屏幕，并能横滑和点按。当前仓库可生成供盘材料、打包已构建的组件和运行 USB 服务。完整启动镜像仍需要补齐板级 UEFI、设备 DTB 和 USB／触控内核的公开构建入口。
+
+## 交给 AI 或自己操作
+
+把仓库首页发给 AI 时，可以附上这句话。
+
+> 按 main 的 AGENTS.md 和 USB 构建说明，在我的 OPD2413 上复现 iPadOS 17.7.11 全 USB 临时启动。先核对构建输入，重启前问我。验收到内屏能从锁屏上滑进入主屏幕，并能横滑和点按。
+
+原上游的 S1–S6 开机检查点属于不同的启动配置。这次的验收顺序是 USB 供盘开始、锁屏出现时间和底部横条、实际手指上滑进主屏幕、横滑和点按设置。等待期间在电脑端观察 USB 读取进度。
 
 ## 生成 USB 供盘材料
 
@@ -21,7 +29,22 @@ python3 scripts/prepare-usb-inputs.py \
 
 密钥生成命令只在第一次执行。后续构建复用同一份私钥，保留在本机。脚本默认从 [苹果 CDN](https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw) 提取 iPad7,1 的 iPadOS 17.7.11（21H461）组件。已有恢复包时可加 `--ipsw /path/to/restore.ipsw`。已有解码后的 OS 时可用 `--os-raw` 复用同一文件系统上的文件，脚本会校验内容。
 
-USB 服务读取 `OS.raw`、`SystemOS.dmg`、`OS.manifest.bin` 和 `SystemOS.manifest.bin`。两份清单由本地 RSA 密钥签发。启动镜像的构建步骤要读取同一目录中的 `owner-public.pem` 与两份清单，校验签名，并把清单摘要和分页索引编进内核。USB 服务需要使用那次构建对应的清单。`trusted-key.bin` 是清单工具输出的公钥锚。
+USB 服务读取 `OS.raw`、`SystemOS.dmg`、`OS.manifest.bin` 和 `SystemOS.manifest.bin`。两份清单由本地 RSA 密钥签发。启动镜像的构建步骤要读取同一目录中的 `owner-public.pem` 与两份清单，校验签名，并把清单摘要和分页索引编进内核。USB 服务需要使用那次构建对应的清单。`trusted-key.bin` 是清单工具输出的公钥锚。脚本也会从同一份 IPSW 生成 `original-static-system.bundle`，用于打包启动镜像。
+
+## 打包本地构建产物
+
+已有对应构建产物时，可在 Linux 或 WSL 上安装 `dosfstools` 和 `mtools` 后运行。输入文件名可以自选，下例用 `BUILD` 指向本地构建目录。
+
+```sh
+python3 scripts/package-usb-boot.py \
+  --builder ./unixnu --uefi "$UEFI" --fd "$BUILD/recovery-high-ram.fd" \
+  --dtb "$BUILD/erhai.dtb" --kernel "$BUILD/kernel.compat.macho" \
+  --adt "$BUILD/kernel.macho.adt" --trust ../erhai-local-inputs/usb/original-static-system.bundle \
+  --data "$BUILD/data.dbrdisk" --config "$BUILD/unixnu.toml" \
+  --output "$BUILD/boot-usb-touch.img"
+```
+
+这里的 `kernel.compat.macho` 是已完成 USB、触控和两份本地清单集成的预链接内核。ADT 需要匹配本轮的 USB 系统卷和易失 Data 配置。TOML 默认项需使用 USB 根卷，并指定 RAM Data。脚本会校验原版信任缓存、压缩内核、逐文件读回 FAT 内容，并检查最终 Android v4 头和内嵌 payload。
 
 ## 运行 USB 供盘
 
@@ -35,4 +58,5 @@ python scripts/serve-usb-blocks.py --images-dir '<Windows 可访问的 USB 材�
 
 - 触控固件使用 Novatek NT36536 的 XN242 版，实测版本号为 `0x1d`。从 [同机型 Linux 项目固定提交](https://github.com/yzddmr6/onepluspad-2pro-mainline/blob/9762c0994e2b5acd672be2ddbda680fd61f1cad6/packaging/firmware/novatek/nt36536-xn242.bin) 下载 `nt36536-xn242.bin`，已验证与实测 ramdisk 内的文件一致。长度 258048 字节，SHA-256 为 `3e3596895975b28459b1937ea35c819b96386b82cbdcc9c61592af8488db702b`。[同机型原厂 ODM 固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
 - 设备 UEFI 在 `UniXNU/uefi-sheng` 的 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 基础上加入了本地 `erhaiPkg`、配置、DTB 和 BootShim 改动。还需要把该板级移植整理成可获取的源码，并记录原厂 DTB 的取法。
+- 用户数据卷使用在 RAM 中展开的 1 GiB APFS 镜像，打包格式为 `DBRDISK1`。公开版仍需接入 Data 的生成步骤和内核卷 UUID 配置。
 - `upstream.rev` 锁定的是板级内核构建的上游。上方单独锁定的 UniXNU 版本供电脑端提取和解码脚本使用。
