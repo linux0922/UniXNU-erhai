@@ -55,6 +55,10 @@ images/
 
 功能状态以实测记录为准。其他机型或其他固件版本的结果，需要单独复现。
 
+## 从源码构建
+
+[USB 构建准备说明](docs/usb-source-build.md)包含 iPadOS 供盘文件的生成步骤、Windows USB 服务以及触控固件的下载和校验。板级 UEFI 和 USB／触控内核构建集成仍在整理。
+
 ## 一起参与
 
 开发分支为 `erhai-usb-touch`，修复请以这个分支为目标提交 Pull Request。为方便其他人复现，建议每个 PR 聚焦一个问题，并写明测试机型、系统版本、修改效果和未验证部分。
@@ -72,7 +76,7 @@ images/
 
 ## 项目来源
 
-本 fork 基于 OPD2413 设备仓库继续开发，实验版使用的设备基线为 `c18858bb442308cd6ed5dcf8539fb82e8ecb8fb1`。感谢 UniXNU 及各设备移植项目提供的代码、工具和调试经验。各组件沿用其原有许可，具体以对应文件和上游仓库为准。
+本项目基于 OPD2413 设备仓库继续开发，实验版使用的设备基线为 `c18858bb442308cd6ed5dcf8539fb82e8ecb8fb1`。感谢 UniXNU 及各设备移植项目提供的代码、工具和调试经验。各组件沿用其原有许可，具体以对应文件和上游仓库为准。
 
 - [UniXNU 核心项目](https://github.com/UniXNU/UniXNU)
 - [OPD2413 设备适配上游](https://github.com/xuqian-git/UniXNU-erhai)
