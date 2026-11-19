@@ -1,6 +1,6 @@
 # 尔海 USB 版的源码构建准备
 
-目标机型为 OnePlus Pad 2 Pro OPD2413（erhai）。已实测的版本通过 Fastboot 临时启动后，用 USB 从电脑读取系统卷，内屏能从锁屏上滑进入主屏幕，并能横滑和点按。当前仓库可准备供盘材料、生成 Android DTB、来宾 ADT 和 RAM Data、打包本地组件并运行 USB 服务。完整启动镜像仍需要补齐板级 UEFI 和 USB／触控内核的公开构建入口。
+目标机型为 OnePlus Pad 2 Pro OPD2413（erhai）。已实测的版本通过 Fastboot 临时启动后，用 USB 从电脑读取系统卷，内屏能从锁屏上滑进入主屏幕，并能横滑和点按。当前仓库可准备供盘材料、生成 Android DTB、来宾 ADT 和 RAM Data、编译板级 UEFI、打包本地组件并运行 USB 服务。完整启动镜像仍需要补齐 USB／触控内核的公开构建入口，并做整链实机验证。
 
 ## 交给 AI 或自己操作
 
@@ -105,4 +105,27 @@ python3 scripts/prepare-erhai-uefi-drivers.py \
   --output "$UEFI/Binaries/erhai"
 ```
 
-实测原厂 `uefi_a.img` 来自 OPD2413，SHA-256 为 `ca72c899177c54a6fa2876d65c9881ba1cbb4ef3dd3afcd584e33ec1194e2dac`。同机型公开记录指出原厂 `uefi` 分区位于一加官方固件包。此处还待确认与这个精确哈希对应的可下载包。提取工具和哈希清单已用本地样本验证，生成的 413 个文件全部与实测构建树一致。板级 `erhaiPkg`、高内存版固件和 BootShim 的公开编译仍待接入。[原厂固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
+实测原厂 `uefi_a.img` 来自 OPD2413，SHA-256 为 `ca72c899177c54a6fa2876d65c9881ba1cbb4ef3dd3afcd584e33ec1194e2dac`。同机型公开记录指出原厂 `uefi` 分区位于一加官方固件包。此处还待确认与这个精确哈希对应的可下载包。提取工具和哈希清单已用本地样本验证，生成的 413 个文件全部与实测构建树一致。[原厂固件来源记录](https://unixnu.com/devices/erhai-xingxing19035#firmware-and-boot)
+
+### 编译板级 UEFI
+
+在 Linux 或 WSL 使用专门的 UEFI 检出，固定到 `66421cb7bb5694843aec8de1ca3d1de4c20cca38` 并准备它的子模块。安装该检出的 `pip-requirements.txt` 和 Mu-Silicium Linux 构建依赖，包括 Clang/LLD、AArch64 GNU binutils、NASM、CMake、Ninja。UEFI 构建会使用其 EDK2 工具链和 Stuart 管理的外部依赖。
+
+```sh
+git clone https://github.com/UniXNU/DarwinBoot.git ../UniXNU-DarwinBoot
+git -C ../UniXNU-DarwinBoot checkout --detach 85332b317ee80898fc78939ea64e6ca52d3837a3
+```
+
+脚本从这个提交提取 DarwinBoot 源码，从前文的 UniXNU `c1ecc5b7…` 提取 UEFI package 源码，在新构建目录应用补丁。
+
+`IOMEM` 指向从目标平板 Linux 以 root 读取的 `/proc/iomem` 文本。脚本检查实测固件使用的 4 GiB 高地址区间完全处于同一段未保留的 System RAM，输入 DTB 也必须匹配公开提取脚本的输出。
+
+```sh
+python3 scripts/build-erhai-uefi.py \
+  --uefi "$UEFI" --unixnu ../UniXNU --darwinboot ../UniXNU-DarwinBoot \
+  --dtb "$BUILD/erhai.dtb" --iomem "$IOMEM" --work "$BUILD/firmware"
+```
+
+用 `"$BUILD/firmware/recovery-high-ram.fd"` 作为打包时的 `--fd`。打包使用同一个 `"$UEFI"`，其中的 BootShim 负责将嵌入的 payload 交给 UEFI。可以先加 `--stage-only` 检查补丁，然后使用一个新工作目录运行完整编译。
+
+已在独立 Linux 检出中用准备好的厂商驱动和 Stuart 工具缓存完成 DEBUG 编译，输出为 2,785,280 字节，构建工具校验了 53 个固件组件。本次输出 SHA-256 为 `033ca0f1516818d31aea6375ce9f99be363783fbdc96ff3d6ced218f42d64128`，新编固件尚待实机启动验证。
