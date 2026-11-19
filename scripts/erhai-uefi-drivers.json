@@ -1,0 +1,186 @@
+{
+  "QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.patched.efi": {
+    "name": "ButtonsDxe",
+    "sha256": "0610fbe8f02aa6eabfa7e20463e990f0929481ca039bea229847196850b9ec94"
+  },
+  "QcomPkg/Drivers/CPRDxe/CPRDxe.efi": {
+    "name": "CPRDxe",
+    "sha256": "4169839db1e37df7c7bfbeb4325a9dc336e7767d8db93f93ec4d8ae93f35fd6b"
+  },
+  "QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.efi": {
+    "name": "ChargerExDxe",
+    "sha256": "ee386c7c7ee0774aa751e943d98e2010eac5ee1a0022be0a58ca003a4e94acb1"
+  },
+  "QcomPkg/Drivers/ChipInfoDxe/ChipInfoDxe.efi": {
+    "name": "ChipInfo",
+    "sha256": "66d9e7b91986375e16a8e0b46168c870c45c8a557bda56128e3374c505943a5b"
+  },
+  "QcomPkg/Drivers/ClockDxe/ClockDxe.patched.efi": {
+    "name": "ClockDxe",
+    "sha256": "0227d590c000485326a60097c32059054fb9b720434b1641f915761d7168b3b8"
+  },
+  "QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.efi": {
+    "name": "CmdDbDxe",
+    "sha256": "b07dd9e7e0a7583a9cce25c27693c463f29de560c3d433d40370e2646ceed726"
+  },
+  "QcomPkg/Drivers/DALSYSDxe/DALSYSDxe.efi": {
+    "name": "DALSys",
+    "sha256": "c8c3104002ee73964b798b42a0c990b0c5b83463b1f2626f49d3cbe5ef90881d"
+  },
+  "QcomPkg/Drivers/DDRInfoDxe/DDRInfoDxe.efi": {
+    "name": "DDRInfoDxe",
+    "sha256": "bcfb42744b8e22ffdd0013f0dbbc50ccb6e61f7458581161e938b457bb837a22"
+  },
+  "QcomPkg/Drivers/DisplayDxe/DisplayDxe.efi": {
+    "name": "DisplayDxe",
+    "sha256": "35b62b2fa80e8085cc7ae6da4b8f275ebf2e853bb12c56b2d2be93c7e225d2a8"
+  },
+  "QcomPkg/Drivers/EnvDxe/EnvDxeEnhanced.efi": {
+    "name": "EnvDxeEnhanced",
+    "sha256": "d110a01f8615f92e899ad35e6922ae31fd23bcce04b8ac423778d189c29d820d"
+  },
+  "QcomPkg/Drivers/GLinkDxe/GLinkDxe.efi": {
+    "name": "GlinkDxe",
+    "sha256": "3131476bd25c0ebe5557332979032abfaf06deaa061362f10fe79adc4f975b4a"
+  },
+  "QcomPkg/Drivers/GpiDxe/GpiDxe.efi": {
+    "name": "GpiDxe",
+    "sha256": "5b07b4dea2d2f12de4f3c83466aa8dcb9a6f1404ef1b784c0fb23812f8cc3950"
+  },
+  "QcomPkg/Drivers/HALIOMMUDxe/HALIOMMUDxe.efi": {
+    "name": "HALIOMMU",
+    "sha256": "9c8618dd86714aa816256a1fcc4f18d6e84e9688748314304b1f20c273ad8510"
+  },
+  "QcomPkg/Drivers/HWIODxe/HWIODxe.efi": {
+    "name": "HWIODxeDriver",
+    "sha256": "76509c6e1fa064cd854a527f14cf546c91b4fb3a0bdbd23f99852454c7752022"
+  },
+  "QcomPkg/Drivers/I2CDxe/I2CDxe.efi": {
+    "name": "I2C",
+    "sha256": "1b2c07b1c3b583dc3da22f35e0489cb42ace0a4aa57d666b31f87e4e59930724"
+  },
+  "QcomPkg/Drivers/ICBDxe/ICBDxe.efi": {
+    "name": "ICBDxe",
+    "sha256": "e391bcbe900884ecde3cf900ae7ad29a637f6c7d2be7aa1fd21322a00cfd510f"
+  },
+  "QcomPkg/Drivers/IPCCDxe/IPCCDxe.efi": {
+    "name": "IPCCDxe",
+    "sha256": "1487526eb6426d5d740e167fb8a4261c6ebd2873f0ed83877460408f06d14164"
+  },
+  "QcomPkg/Drivers/MailboxDxe/MailboxDxe.efi": {
+    "name": "MailboxDxe",
+    "sha256": "5e1b26e98b32ecec41baf60dd39c12f86e757f87b9a350a5bd28ee000e122c82"
+  },
+  "QcomPkg/Drivers/NpaDxe/NpaDxe.efi": {
+    "name": "NpaDxe",
+    "sha256": "b1cad0fd531bf2aeb7f5ce2845fb385db57ed8c477175891650ae66677752d1a"
+  },
+  "QcomPkg/Drivers/PILDxe/PILDxe.efi": {
+    "name": "PILDxe",
+    "sha256": "78b471922c69705647a78eb5ba9933139f38859d58ced37e9407cfcf37795189"
+  },
+  "QcomPkg/Drivers/PILProxyDxe/PILProxyDxe.efi": {
+    "name": "PILProxyDxe",
+    "sha256": "b48a8f28eb2d3f4a9ca0db749ba94a401e685620cc48b8101823fa89dcf6eeb6"
+  },
+  "QcomPkg/Drivers/PlatformInfoDxe/PlatformInfoDxe.efi": {
+    "name": "PlatformInfoDxeDriver",
+    "sha256": "8753ffb6fbe195abc25f870b8a3e9972535ceeb441d48893d1a2c0609a36897f"
+  },
+  "QcomPkg/Drivers/PmicGlinkDxe/PmicGlinkDxe.efi": {
+    "name": "PmicGlinkDxe",
+    "sha256": "a02f71b314aeb61c724f5837b9e4a5aa7e69db32f9ca0bf622228294701d80fd"
+  },
+  "QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.efi": {
+    "name": "PwrUtilsDxe",
+    "sha256": "a761c980f658f1e89c4269586cd4f67e846d0f91a1f5c054eb03d6d2625ac5ee"
+  },
+  "QcomPkg/Drivers/QcomScmiDxe/QcomScmiDxe.efi": {
+    "name": "QcomScmiDxe",
+    "sha256": "dfb6a811fd3695ad661c2c2cc2ab1537e5148bad2bf1c46319bfc3365d34266c"
+  },
+  "QcomPkg/Drivers/QupDxe/QupDxe.efi": {
+    "name": "Qup",
+    "sha256": "fb0b5a5fc319f077a467288f86103d37541a89fb48055eb3d5d68496b068690f"
+  },
+  "QcomPkg/Drivers/RpmhDxe/RpmhDxe.efi": {
+    "name": "RpmhDxe",
+    "sha256": "85e1ebd23791b0ac2e2b59b579a79e8780660e17b04a2dc811587ea0d03455b1"
+  },
+  "QcomPkg/Drivers/RscDxe/RscDxe.efi": {
+    "name": "RscDxe",
+    "sha256": "0d89979d8427484dcedb156e59940bf7ae76606ad6505d4cd3d314b1bf70ef01"
+  },
+  "QcomPkg/Drivers/SPIDxe/SPIDxe.efi": {
+    "name": "SPI",
+    "sha256": "3bfe604f6cbbac8fb499c9ecaaa954796053b429e3ed5008c16cbb18876b055c"
+  },
+  "QcomPkg/Drivers/SPMIDxe/SPMIDxe.patched.efi": {
+    "name": "SPMI",
+    "sha256": "1f8d8506c82bc668dff87521f54f8c0cb4032eeb4d01ce25ce174242720ac638"
+  },
+  "QcomPkg/Drivers/SPSSDxe/SPSSDxe.efi": {
+    "name": "SPSSDxe",
+    "sha256": "bf2383929404a429fa9c3fcb1afd369c5c0112ea465345ab0103a136814ffc57"
+  },
+  "QcomPkg/Drivers/SdccDxe/SdccDxe.efi": {
+    "name": "SdccDxe",
+    "sha256": "bf5a924ac3e0c570a74efb3010dcde4d6536c16bf59eea2142cc5e99ffb62b08"
+  },
+  "QcomPkg/Drivers/SmemDxe/SmemDxe.efi": {
+    "name": "SmemDxe",
+    "sha256": "5e66b93ae5a62b7b9b8e27930aa2a14309cb352a036b22557bab80e182952b1e"
+  },
+  "QcomPkg/Drivers/TLMMDxe/TLMMDxe.efi": {
+    "name": "DALTLMM",
+    "sha256": "397c1f082614355ee1272faf4a89b65a2a846d15555052bc6ef67cce4f8267b8"
+  },
+  "QcomPkg/Drivers/TsensDxe/TsensDxe.efi": {
+    "name": "TsensDxe",
+    "sha256": "556f8c02ea739feb7342e60336170c62231544ada44fffd4cc4509f363ed24f3"
+  },
+  "QcomPkg/Drivers/UFSDxe/UFSDxe.patched.efi": {
+    "name": "UFSDxe",
+    "sha256": "c1267eadc0b67bf336d8e11ccceb51abaf02144be706b0aa7465abe004b1551f"
+  },
+  "QcomPkg/Drivers/ULogDxe/ULogDxe.efi": {
+    "name": "ULogDxe",
+    "sha256": "7e42febff51f07af3635621c157195a4baee60da95d962db20fe7faadb265aa3"
+  },
+  "QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.patched.efi": {
+    "name": "UsbConfigDxe",
+    "sha256": "8ce9c2441a6dd4d952dd60004a6c12ac634aea6ca67bd02701fefc03e4d8a069"
+  },
+  "QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.efi": {
+    "name": "UsbDeviceDxe",
+    "sha256": "ac0410d4ac96b7b58a5e54a21c66996d7ff17789bdc85519c7bbc97f255a43e8"
+  },
+  "QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.efi": {
+    "name": "UsbInitDxe",
+    "sha256": "d97facaae32ab3975b29c0f2c5a830f228ff6c5502b77b5a4e61b0a6184b08ca"
+  },
+  "QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.patched.efi": {
+    "name": "UsbMsdDxe",
+    "sha256": "6a6f79504447221b65b324767e0c908cc1311853575395d2a59ea5206e72e792"
+  },
+  "QcomPkg/Drivers/UsbPwrCtrlDxe/UsbPwrCtrlDxe.efi": {
+    "name": "UsbPwrCtrlDxe",
+    "sha256": "5d6f65dea1a4a00208bb3077569253d1f395afcec6d530fba8974d7c07838f99"
+  },
+  "QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.efi": {
+    "name": "UsbfnDwc3Dxe",
+    "sha256": "2af36dbb534e456b09a3f46261f20d54ba73c590d782c0256f9cb411d288ac43"
+  },
+  "QcomPkg/Drivers/VcsDxe/VcsDxe.efi": {
+    "name": "VcsDxe",
+    "sha256": "c51528a695b84ed41b7c9ea0880484fccc916dd4967de85d114ec82d72b1830e"
+  },
+  "QcomPkg/Drivers/XhciDxe/XhciDxe.efi": {
+    "name": "XhciDxe",
+    "sha256": "76a2f88c9da4d4f1ceb1a358beee40c8d597c6ec1ddb5a60f09936b180e00118"
+  },
+  "QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.efi": {
+    "name": "XhciPciEmulation",
+    "sha256": "10a08115cacfb7e1817e03c0bf6ffdb9d25b21992b9cb869d709409669fa8c9e"
+  }
+}
