@@ -2,6 +2,12 @@ name: Erhai S9 Metal userspace
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/erhai-s9-userspace.yml
+      - scripts/build-erhai-s9-userspace.py
+      - scripts/turnip-erhai-s9-selectors.patch
 
 permissions:
   contents: read

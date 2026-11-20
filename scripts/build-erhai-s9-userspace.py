@@ -70,7 +70,14 @@ def build(source, out):
     venv = source / ".cache/mesa-venv"
     run(sys.executable, "-m", "venv", venv)
     run(venv / "bin/python", "-m", "pip", "install", "-r", scripts / "requirements-adreno-compiler.txt")
-    run(sys.executable, scripts / "build-turnip-darwin.py", "--target", "ios", "--abi-dir", header.parent)
+    turnip_build = scripts / "build-turnip-darwin.py"
+    recipe = turnip_build.read_text()
+    flags = "flags = ['-target', triple, '-isysroot', sdk, '-fstack-protector-strong']"
+    if recipe.count(flags) != 1:
+        raise ValueError("pinned Turnip cross-build flag list differs")
+    # Flex-generated source requests POSIX mode while Mesa uses Darwin extensions.
+    turnip_build.write_text(recipe.replace(flags, flags[:-1] + ", '-D_DARWIN_C_SOURCE']"))
+    run(sys.executable, turnip_build, "--target", "ios", "--abi-dir", header.parent)
     run(sys.executable, scripts / "build-adreno-metal-plugin.py", "--chip", "a830", "--no-replay")
 
     bundle = "NativeAdrenoMetal.bundle"
