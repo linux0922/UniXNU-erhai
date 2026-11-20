@@ -1,0 +1,57 @@
+name: Erhai Metal diagnostic RAM Data
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/erhai-metal-ram-data.yml
+      - scripts/prepare-erhai-metal-ram-data.py
+      - scripts/stage-erhai-metal-smoke.py
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44756770381
+          name: erhai-s9-metal-userspace-arm64-ios17
+          path: inputs/plugin
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44768255605
+          name: erhai-metal-smoke-arm64-ios17
+          path: inputs/probe
+      - name: Stage binaries and create the RAM-only APFS seed
+        run: |
+          echo 'b4081a7b847dc6c82847e04d320f8f7267c4f8a1e7ff667f80f2fdcf64b90bba  inputs/plugin/erhai-s9-userspace.tgz' | shasum -a 256 -c -
+          mkdir -p out
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/UniXNU/DarwinBoot/3c75734014cdab0acd9541e88057b7606ee7ae08/Test/packed_ramdisk.py \
+            -o inputs/packed_ramdisk.py
+          echo 'efb5fac21ae94dcb1aecd47da2b73a7112b487e43692ac6396858552d27a0e48  inputs/packed_ramdisk.py' | shasum -a 256 -c -
+          python3 scripts/stage-erhai-metal-smoke.py inputs/plugin/erhai-s9-userspace.tgz inputs/probe out/private-stage
+          codesign --verify --strict out/private-stage/erhai-metal-smoke
+          codesign --verify --strict out/private-stage/NativeAdrenoMetal.bundle
+          codesign --verify --strict out/private-stage/NativeAdrenoMetal.bundle/libvulkan_freedreno.dylib
+          sudo "$(command -v python3)" scripts/prepare-erhai-metal-ram-data.py out/private-stage inputs/packed_ramdisk.py out/ram-data
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erhai-metal-diagnostic-ram-data
+          path: out/ram-data
+          if-no-files-found: error
+          retention-days: 7
