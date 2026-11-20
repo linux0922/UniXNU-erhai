@@ -40,6 +40,9 @@ def build(source, out):
     for name in ("Adreno740", "AdrenoPM4", "GopFramebuffer"):
         component = components[name]
         checkout(source / component["path"], component["repository"], component["revision"])
+    metal = components["AdrenoMetal"]
+    metal_ref = revision(source, f"HEAD:{metal['path']}")
+    checkout(source / metal["path"], metal["repository"], metal_ref)
     component = components["NativeMobileDisplay"]
     display = source / ".cache/pagani-display"
     checkout(display, component["repository"], component["revision"], [component["path"]])
