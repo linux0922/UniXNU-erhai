@@ -2,6 +2,12 @@ name: Erhai Metal smoke probe
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/erhai-metal-smoke.yml
+      - scripts/build-erhai-metal-smoke.sh
+      - scripts/erhai-metal-smoke.m
 
 permissions:
   contents: read

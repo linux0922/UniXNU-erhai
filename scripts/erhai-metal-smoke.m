@@ -2,16 +2,77 @@
 #import <Metal/Metal.h>
 #import <dispatch/dispatch.h>
 #import <objc/runtime.h>
+#include <dlfcn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-int main(void)
+@protocol ErhaiMetalPlugin <NSObject>
+- (instancetype)initWithAcceleratorPort:(unsigned)port;
+@end
+
+static id<MTLDevice> loadOwnedPlugin(NSString *directory)
+{
+    NSString *marker = [directory stringByAppendingPathComponent:@"NativeAdrenoMetal.publish"];
+    if (![[NSFileManager defaultManager] isReadableFileAtPath:marker]) {
+        fprintf(stderr, "METAL_SMOKE stage=plugin missing_private_marker\n");
+        return nil;
+    }
+    NSBundle *bundle = [NSBundle bundleWithPath:
+        [directory stringByAppendingPathComponent:@"NativeAdrenoMetal.bundle"]];
+    NSError *error = nil;
+    if (![bundle loadAndReturnError:&error]) {
+        fprintf(stderr, "METAL_SMOKE stage=plugin load_failed=%s\n",
+                error.localizedDescription.UTF8String ?: "bundle not found");
+        return nil;
+    }
+    Class<ErhaiMetalPlugin> factory = (Class<ErhaiMetalPlugin>)bundle.principalClass;
+    if (![factory instancesRespondToSelector:@selector(initWithAcceleratorPort:)]) {
+        fprintf(stderr, "METAL_SMOKE stage=plugin invalid_factory\n");
+        return nil;
+    }
+
+    void *iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_NOW | RTLD_LOCAL);
+    if (!iokit) {
+        fprintf(stderr, "METAL_SMOKE stage=service missing_iokit\n");
+        return nil;
+    }
+    CFMutableDictionaryRef (*matching)(const char *) = dlsym(iokit, "IOServiceMatching");
+    unsigned (*getService)(unsigned, CFDictionaryRef) = dlsym(iokit, "IOServiceGetMatchingService");
+    int (*releaseService)(unsigned) = dlsym(iokit, "IOObjectRelease");
+    CFMutableDictionaryRef match = matching && getService && releaseService
+        ? matching("NativeAdrenoGpuPublished") : NULL;
+    unsigned port = match ? getService(0, match) : 0;
+    if (!port) {
+        fprintf(stderr, "METAL_SMOKE stage=service unavailable\n");
+        dlclose(iokit);
+        return nil;
+    }
+    id<MTLDevice> device = (id<MTLDevice>)[[factory alloc] initWithAcceleratorPort:port];
+    releaseService(port);
+    dlclose(iokit);
+    return device;
+}
+
+int main(int argc, const char *argv[])
 {
     @autoreleasepool {
-        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        id<MTLDevice> device;
+        if (argc == 1) {
+            device = MTLCreateSystemDefaultDevice();
+        } else if (argc == 3 && strcmp(argv[1], "--plugin-dir") == 0) {
+            NSString *directory = [NSString stringWithUTF8String:argv[2]];
+            if (![directory isAbsolutePath]) {
+                fprintf(stderr, "METAL_SMOKE stage=arguments absolute_plugin_path_required\n");
+                return 6;
+            }
+            device = loadOwnedPlugin(directory);
+        } else {
+            fprintf(stderr, "Usage: erhai-metal-smoke [--plugin-dir /path/to/private/stage]\n");
+            return 6;
+        }
         if (!device) {
-            fprintf(stderr, "METAL_SMOKE stage=device no_default_device\n");
+            fprintf(stderr, "METAL_SMOKE stage=device unavailable\n");
             return 1;
         }
         fprintf(stderr, "METAL_SMOKE stage=device name=%s class=%s\n",
