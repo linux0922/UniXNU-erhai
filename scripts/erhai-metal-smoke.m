@@ -6,12 +6,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 @protocol ErhaiMetalPlugin <NSObject>
 - (instancetype)initWithAcceleratorPort:(unsigned)port;
 @end
 
-static id<MTLDevice> loadOwnedPlugin(NSString *directory)
+static id<MTLDevice> loadOwnedPlugin(NSString *directory, unsigned serviceAttempts)
 {
     NSString *marker = [directory stringByAppendingPathComponent:@"NativeAdrenoMetal.publish"];
     if (![[NSFileManager defaultManager] isReadableFileAtPath:marker]) {
@@ -40,9 +41,15 @@ static id<MTLDevice> loadOwnedPlugin(NSString *directory)
     CFMutableDictionaryRef (*matching)(const char *) = dlsym(iokit, "IOServiceMatching");
     unsigned (*getService)(unsigned, CFDictionaryRef) = dlsym(iokit, "IOServiceGetMatchingService");
     int (*releaseService)(unsigned) = dlsym(iokit, "IOObjectRelease");
-    CFMutableDictionaryRef match = matching && getService && releaseService
-        ? matching("NativeAdrenoGpuPublished") : NULL;
-    unsigned port = match ? getService(0, match) : 0;
+    unsigned port = 0;
+    if (matching && getService && releaseService) {
+        for (unsigned attempt = 0; attempt < serviceAttempts; ++attempt) {
+            CFMutableDictionaryRef match = matching("NativeAdrenoGpuPublished");
+            port = match ? getService(0, match) : 0;
+            if (port) break;
+            if (attempt + 1 < serviceAttempts) sleep(1);
+        }
+    }
     if (!port) {
         fprintf(stderr, "METAL_SMOKE stage=service unavailable\n");
         dlclose(iokit);
@@ -55,11 +62,13 @@ static id<MTLDevice> loadOwnedPlugin(NSString *directory)
     return device;
 }
 
-int main(int argc, const char *argv[])
+static int runProbe(int argc, const char *argv[], BOOL ramInit)
 {
     @autoreleasepool {
         id<MTLDevice> device;
-        if (argc == 1) {
+        if (ramInit) {
+            device = loadOwnedPlugin(@"/private/var/tmp/erhai-s9-metal-smoke-private", 90);
+        } else if (argc == 1) {
             device = MTLCreateSystemDefaultDevice();
         } else if (argc == 3 && strcmp(argv[1], "--plugin-dir") == 0) {
             NSString *directory = [NSString stringWithUTF8String:argv[2]];
@@ -67,7 +76,7 @@ int main(int argc, const char *argv[])
                 fprintf(stderr, "METAL_SMOKE stage=arguments absolute_plugin_path_required\n");
                 return 6;
             }
-            device = loadOwnedPlugin(directory);
+            device = loadOwnedPlugin(directory, 1);
         } else {
             fprintf(stderr, "Usage: erhai-metal-smoke [--plugin-dir /path/to/private/stage]\n");
             return 6;
@@ -119,4 +128,21 @@ int main(int argc, const char *argv[])
         fprintf(stderr, "METAL_SMOKE stage=readback verified_bytes=%lu\n", (unsigned long)bytes);
         return 0;
     }
+}
+
+int main(int argc, const char *argv[])
+{
+    const BOOL ramInit = getpid() == 1 && argc == 1 &&
+        strcmp(argv[0], "/private/var/tmp/erhai-s9-metal-smoke-private/erhai-metal-smoke") == 0;
+    if (!ramInit) return runProbe(argc, argv, NO);
+
+    // Keep PID 1 alive after the one-shot run in this dedicated diagnostic boot.
+    const char *logPath = "/private/var/tmp/erhai-s9-metal-smoke-private/stderr.log";
+    if (freopen(logPath, "w", stderr)) {
+        setvbuf(stderr, NULL, _IONBF, 0);
+        fprintf(stderr, "METAL_SMOKE stage=ram_init waiting_for_s9\n");
+        int result = runProbe(argc, argv, YES);
+        fprintf(stderr, "METAL_SMOKE stage=ram_init result=%d\n", result);
+    }
+    for (;;) pause();
 }
