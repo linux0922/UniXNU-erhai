@@ -1,0 +1,54 @@
+name: Erhai S9 Metal userspace
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: a6ff7768bba6b9f285ac4c3e5b2c5d4904a016a3
+          path: unixnu-upstream
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install compiler tools
+        run: |
+          brew install bison flex glslang llvm@21 ninja pkgconf shaderc spirv-tools
+          for tool in bison flex llvm@21; do
+            echo "$(brew --prefix "$tool")/bin" >> "$GITHUB_PATH"
+          done
+          rustup toolchain install 1.98.0 --profile minimal --target aarch64-apple-ios
+          xcrun --sdk iphoneos --show-sdk-path
+      - name: Build and verify the S9 userspace bundle
+        run: |
+          python scripts/build-erhai-s9-userspace.py unixnu-upstream out/erhai-s9
+          tar -czf out/erhai-s9-userspace.tgz -C out/erhai-s9 .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erhai-s9-metal-userspace-arm64-ios17
+          path: out/erhai-s9-userspace.tgz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Save compiler logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: erhai-s9-build-logs
+          path: |
+            unixnu-upstream/.cache/mesa-tu-*.log
+            unixnu-upstream/build/adreno-metal-bridge/build-*.log
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

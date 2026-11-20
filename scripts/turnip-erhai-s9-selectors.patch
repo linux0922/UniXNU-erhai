@@ -1,0 +1,101 @@
+diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
+--- a/src/freedreno/vulkan/tu_knl_darwin.cc
++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
+@@ -36,7 +36,6 @@
+ #include "tu_rmv.h"
+ 
+ /* 'NTNL': first word of a tunnelled call, as served by the driver (NativeAdrenoPublish.cpp). */
+-#define DW_TUNNEL_MAGIC 0x4e544e4cu
+ 
+ /* One GPU per process: the kernel service has a single connection slot, so the connection and the fence bookkeeping are
+  * process state rather than per tu_device state. */
+@@ -51,8 +50,6 @@
+     * service with open type 0x4147, and the sandbox profile decides which external-method selector numbers are admitted, so every ABI
+     * method travels as {magic, method, payload} through one admitted selector (the same tunnel the plugin's own test uses). Direct
+     * selectors (selector = ABI method) stay available for an unrestricted process that opens NativeAdrenoGpuPublished. */
+-   bool tunnel;
+-   uint32_t selector;
+    uint32_t last_fence;
+    NativeAdrenoAbiDeviceInfo info;
+    NativeAdrenoAbiParams params;
+@@ -144,48 +141,20 @@
+ dw_call(uint32_t method, const void *in, size_t in_size, void *out,
+         size_t out_size)
+ {
++   // Erhai S9 implements ABI v2 selectors 1 through 16.
++   if (method == NativeAdrenoMethodSetPriority || method == NativeAdrenoMethodNote)
++      return kIOReturnUnsupported;
++
+    size_t out_bytes = out_size;
+-   if (!dw.tunnel)
+-      return IOConnectCallStructMethod(dw.conn, method, in, in_size, out_size ? out : NULL,
+-                                       out_size ? &out_bytes : NULL);
+-   uint8_t buffer[8 + sizeof(NativeAdrenoAbiSubmit)];
+-   if (in_size > sizeof(NativeAdrenoAbiSubmit))
+-      return kIOReturnBadArgument;
+-   const uint32_t header[2] = {DW_TUNNEL_MAGIC, method};
+-   memcpy(buffer, header, sizeof(header));
+-   if (in_size)
+-      memcpy(buffer + sizeof(header), in, in_size);
+-   return IOConnectCallStructMethod(dw.conn, dw.selector, buffer, sizeof(header) + in_size, out_size ? out : NULL,
++   return IOConnectCallStructMethod(dw.conn, method, in, in_size, out_size ? out : NULL,
+                                     out_size ? &out_bytes : NULL);
+ }
+ 
+-/* Finds an admitted selector: the driver answers a tunnel probe (method 0xffffffff) with success for every selector the sandbox lets through. */
+-static bool
+-dw_probe_selector(void)
+-{
+-   const uint32_t header[2] = {DW_TUNNEL_MAGIC, 0xffffffffu};
+-   for (uint32_t s = 0; s < 256; s++) {
+-      if (IOConnectCallStructMethod(dw.conn, s, header, sizeof(header), NULL, NULL) == KERN_SUCCESS) {
+-         dw.selector = s;
+-         return true;
+-      }
+-   }
+-   return false;
+-}
+-
+ static VkResult
+ dw_open_connection(struct tu_instance *instance)
+ {
+-   /* TU_DARWIN_SERVICE names the IOKit service (default: the AGX accelerator the original Metal discovery finds), TU_DARWIN_OPEN_TYPE its open
+-    * type (default 0x4147, the type the driver serves to the plugin). NativeAdrenoGpuPublished with type 0 is the unsandboxed direct form. */
+-   const char *service_name = getenv("TU_DARWIN_SERVICE");
+-   if (!service_name || !*service_name)
+-      service_name = "IOAcceleratorES";
+-   const char *type_text = getenv("TU_DARWIN_OPEN_TYPE");
+-   uint32_t open_type = type_text && *type_text ? (uint32_t)strtoul(type_text, NULL, 0) : 0x4147u;
+-   const bool direct = !strcmp(service_name, "NativeAdrenoGpuPublished");
+-   if (direct && !(type_text && *type_text))
+-      open_type = 0;
++   const char *service_name = "NativeAdrenoGpuPublished";
++   const uint32_t open_type = 0;
+    io_service_t service = IOServiceGetMatchingService(
+       kIOMainPortDefault, IOServiceMatching(service_name));
+    if (!service)
+@@ -197,13 +166,6 @@
+       return vk_startup_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
+                                "IOServiceOpen(%s, 0x%x) failed: 0x%x", service_name, open_type, kr);
+    }
+-   dw.tunnel = !direct;
+-   if (dw.tunnel && !dw_probe_selector()) {
+-      IOServiceClose(dw.conn);
+-      dw.conn = 0;
+-      return vk_startup_errorf(instance, VK_ERROR_INITIALIZATION_FAILED, "no external-method selector is admitted for this process");
+-   }
+-
+    kr = dw_call(NativeAdrenoMethodQuery, NULL, 0, &dw.params, sizeof(dw.params));
+    if (kr == KERN_SUCCESS && dw.params.abi_version != NativeAdrenoAbiVersion)
+       kr = kIOReturnUnsupported;
+@@ -233,8 +195,8 @@
+          priority.background = 2;
+       }
+       dw_priority = priority;
+-      dw_priority_known = true;
+-      (void)dw_call(NativeAdrenoMethodSetPriority, &priority, sizeof(priority), NULL, 0);
++      dw_priority_known = dw_call(NativeAdrenoMethodSetPriority, &priority,
++                                  sizeof(priority), NULL, 0) == KERN_SUCCESS;
+    }
+    return VK_SUCCESS;
+ }
