@@ -26,8 +26,8 @@ static id<MTLDevice> loadOwnedPlugin(NSString *directory)
                 error.localizedDescription.UTF8String ?: "bundle not found");
         return nil;
     }
-    Class<ErhaiMetalPlugin> factory = (Class<ErhaiMetalPlugin>)bundle.principalClass;
-    if (![factory instancesRespondToSelector:@selector(initWithAcceleratorPort:)]) {
+    Class factory = bundle.principalClass;
+    if (!class_getInstanceMethod(factory, @selector(initWithAcceleratorPort:))) {
         fprintf(stderr, "METAL_SMOKE stage=plugin invalid_factory\n");
         return nil;
     }
@@ -48,7 +48,8 @@ static id<MTLDevice> loadOwnedPlugin(NSString *directory)
         dlclose(iokit);
         return nil;
     }
-    id<MTLDevice> device = (id<MTLDevice>)[[factory alloc] initWithAcceleratorPort:port];
+    id<ErhaiMetalPlugin> instance = [factory alloc];
+    id<MTLDevice> device = (id<MTLDevice>)[instance initWithAcceleratorPort:port];
     releaseService(port);
     dlclose(iokit);
     return device;
