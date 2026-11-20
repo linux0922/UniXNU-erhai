@@ -1,0 +1,30 @@
+name: Erhai Metal smoke probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile and verify the iPadOS probe
+        run: bash scripts/build-erhai-metal-smoke.sh out/erhai-metal-smoke
+      - name: Record SHA-256
+        run: |
+          cd out
+          shasum -a 256 erhai-metal-smoke > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erhai-metal-smoke-arm64-ios17
+          path: |
+            out/erhai-metal-smoke
+            out/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
