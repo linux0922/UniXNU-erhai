@@ -3,6 +3,7 @@
 #import <dispatch/dispatch.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,6 +12,19 @@
 @protocol ErhaiMetalPlugin <NSObject>
 - (instancetype)initWithAcceleratorPort:(unsigned)port;
 @end
+
+static const char ramLogPath[] = "/private/var/tmp/erhai-s9-metal-smoke-private/stderr.log";
+
+__attribute__((constructor))
+static void recordRamStartup(void)
+{
+    if (getpid() != 1) return;
+    int fd = open(ramLogPath, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0600);
+    if (fd < 0) return;
+    static const char message[] = "METAL_SMOKE stage=ram_constructor\n";
+    (void)write(fd, message, sizeof(message) - 1);
+    close(fd);
+}
 
 static id<MTLDevice> loadOwnedPlugin(NSString *directory, unsigned serviceAttempts)
 {
@@ -132,17 +146,20 @@ static int runProbe(int argc, const char *argv[], BOOL ramInit)
 
 int main(int argc, const char *argv[])
 {
-    const BOOL ramInit = getpid() == 1 && argc == 1 &&
-        strcmp(argv[0], "/private/var/tmp/erhai-s9-metal-smoke-private/erhai-metal-smoke") == 0;
+    const BOOL ramInit = getpid() == 1;
     if (!ramInit) return runProbe(argc, argv, NO);
 
     // Keep PID 1 alive after the one-shot run in this dedicated diagnostic boot.
-    const char *logPath = "/private/var/tmp/erhai-s9-metal-smoke-private/stderr.log";
-    if (freopen(logPath, "w", stderr)) {
-        setvbuf(stderr, NULL, _IONBF, 0);
-        fprintf(stderr, "METAL_SMOKE stage=ram_init waiting_for_s9\n");
-        int result = runProbe(argc, argv, YES);
-        fprintf(stderr, "METAL_SMOKE stage=ram_init result=%d\n", result);
+    int fd = open(ramLogPath, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0600);
+    if (fd >= 0) {
+        const int attached = dup2(fd, STDERR_FILENO);
+        if (fd != STDERR_FILENO) close(fd);
+        if (attached == STDERR_FILENO) {
+            setvbuf(stderr, NULL, _IONBF, 0);
+            fprintf(stderr, "METAL_SMOKE stage=ram_init waiting_for_s9\n");
+            int result = runProbe(argc, argv, YES);
+            fprintf(stderr, "METAL_SMOKE stage=ram_init result=%d\n", result);
+        }
     }
     for (;;) pause();
 }
