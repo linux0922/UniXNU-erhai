@@ -8,6 +8,7 @@ on:
       - .github/workflows/erhai-metal-smoke.yml
       - scripts/build-erhai-metal-smoke.sh
       - scripts/erhai-metal-smoke.m
+      - scripts/erhai-metal-static-entry.S
 
 permissions:
   contents: read
@@ -26,11 +27,31 @@ jobs:
         run: |
           cd out
           shasum -a 256 erhai-metal-smoke > SHA256SUMS
+      - name: Build the independent static entry control
+        run: |
+          mkdir -p out/static-entry
+          xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 \
+            -c scripts/erhai-metal-static-entry.S -o "$RUNNER_TEMP/erhai-static.o"
+          xcrun ld -arch arm64 -static -e _start -platform_version ios 17.0 17.0 \
+            "$RUNNER_TEMP/erhai-static.o" -o "$RUNNER_TEMP/erhai-static.macho"
+          xcrun vtool -set-build-version ios 17.0 17.0 -replace \
+            -output out/static-entry/erhai-metal-smoke "$RUNNER_TEMP/erhai-static.macho"
+          codesign --force --sign - --pagesize 4096 --identifier org.unixnu.erhai.metal-static-entry \
+            out/static-entry/erhai-metal-smoke
+          codesign --verify --strict out/static-entry/erhai-metal-smoke
+          cd out/static-entry
+          shasum -a 256 erhai-metal-smoke > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: erhai-metal-smoke-arm64-ios17
           path: |
             out/erhai-metal-smoke
             out/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erhai-metal-static-entry-arm64-ios17
+          path: out/static-entry
           if-no-files-found: error
           retention-days: 7
