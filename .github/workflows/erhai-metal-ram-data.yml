@@ -33,8 +33,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 44877476857
-          name: erhai-metal-smoke-arm64-ios17
+          run-id: 44880795421
+          name: erhai-metal-static-entry-arm64-ios17
           path: inputs/probe
       - name: Stage binaries and create the RAM-only APFS seed
         run: |
